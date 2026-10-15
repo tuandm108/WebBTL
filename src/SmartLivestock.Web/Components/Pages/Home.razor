@@ -1,0 +1,91 @@
+@page "/"
+@rendermode InteractiveServer
+@using SmartLivestock.Contracts
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
+@inject IHttpClientFactory ClientFactory
+@inject IConfiguration Config
+
+<PageTitle>Giám sát chuồng nuôi | Smart Livestock</PageTitle>
+
+<h1>Giám sát chuồng nuôi</h1>
+<p>Dữ liệu mô phỏng từ Edge · Chuồng mẫu <code>@DemoIds.Barn</code></p>
+
+@if (error is not null)
+{
+    <div class="alert alert-warning" role="alert">@error</div>
+}
+else if (readings.Count == 0)
+{
+    <p>Đang chờ dữ liệu cảm biến. Hãy khởi chạy API và Simulator.</p>
+}
+else
+{
+    <div class="sensor-grid">
+        @foreach (var reading in readings.OrderBy(x => x.Metric))
+        {
+            <div class="sensor-card">
+                <div class="sensor-label">@Label(reading.Metric)</div>
+                <div class="sensor-value">@reading.Value.ToString("0.##") <small>@reading.Unit</small></div>
+                <div class="sensor-status">@reading.Quality · @reading.MeasuredAt.ToLocalTime().ToString("HH:mm:ss")</div>
+            </div>
+        }
+    </div>
+}
+<p class="connection-status">Kết nối trực tiếp: @connectionStatus</p>
+
+@code {
+    private readonly List<ReadingDto> readings = [];
+    private HubConnection? hub;
+    private string? error;
+    private string connectionStatus = "đang kết nối";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var apiBase = Config["Api:BaseUrl"] ?? "http://localhost:5215";
+        try
+        {
+            var client = ClientFactory.CreateClient("api");
+            var latest = await client.GetFromJsonAsync<List<ReadingDto>>(
+                $"api/barns/{DemoIds.Barn:D}/environment/latest");
+            if (latest is not null) readings.AddRange(latest);
+            hub = new HubConnectionBuilder()
+                .WithUrl($"{apiBase.TrimEnd('/')}/hubs/monitoring")
+                .WithAutomaticReconnect()
+                .Build();
+            hub.On<ReadingDto>("telemetryUpdated", dto => _ = InvokeAsync(() =>
+            {
+                readings.RemoveAll(x => x.Metric == dto.Metric);
+                readings.Add(dto);
+                StateHasChanged();
+            }));
+            hub.Reconnected += async _ =>
+            {
+                await hub.InvokeAsync("SubscribeBarn", DemoIds.Barn.ToString("D"));
+                await InvokeAsync(() => { connectionStatus = "đã kết nối"; StateHasChanged(); });
+            };
+            await hub.StartAsync();
+            await hub.InvokeAsync("SubscribeBarn", DemoIds.Barn.ToString("D"));
+            connectionStatus = "đã kết nối";
+        }
+        catch (Exception ex)
+        {
+            error = $"Không thể tải dữ liệu: {ex.Message}";
+            connectionStatus = "mất kết nối";
+        }
+    }
+
+    private static string Label(string metric) => metric switch
+    {
+        "temperature" => "Nhiệt độ",
+        "humidity" => "Độ ẩm",
+        "nh3" => "NH₃",
+        "h2s" => "H₂S",
+        _ => metric
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hub is not null) await hub.DisposeAsync();
+    }
+}
