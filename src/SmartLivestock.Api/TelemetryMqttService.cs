@@ -102,7 +102,7 @@ public sealed class TelemetryMqttService(
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var device = await db.Devices.FirstOrDefaultAsync(x =>
+        var device = await db.Devices.Include(x => x.Barn).FirstOrDefaultAsync(x =>
             x.ExternalId == message.DeviceId && x.BarnId == barnId &&
             x.Barn.FarmId == farmId, ct);
         if (device is null)
@@ -129,6 +129,7 @@ public sealed class TelemetryMqttService(
         }).ToList();
         db.SensorReadings.AddRange(rows);
         device.LastSeenAt = receivedAt;
+        var alertChanges = await AlertTracker.ApplyAsync(db, device, message, ct);
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException
             { Number: 2601 or 2627 })
@@ -141,5 +142,8 @@ public sealed class TelemetryMqttService(
                 row.Value, row.Unit, row.Quality, row.MeasuredAt, row.ReceivedAt);
             await hub.Clients.Group(barnId.ToString("D")).SendAsync("telemetryUpdated", dto, ct);
         }
+        foreach (var (alert, change) in alertChanges)
+            await hub.Clients.Group(MonitoringHub.AlertsGroup)
+                .SendAsync("alertChanged", new AlertChangedDto(change, AlertTracker.ToDto(alert, device.Barn)), ct);
     }
 }

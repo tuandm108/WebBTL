@@ -1,0 +1,160 @@
+@page "/settings"
+@implements IDisposable
+@using SmartLivestock.Contracts
+@using SmartLivestock.Web.Services
+@inject AlertSettingsStore Store
+
+<PageTitle>Cài đặt | Smart Livestock</PageTitle>
+
+<div class="settings-page">
+    <header class="page-head">
+        <div>
+            <h1>Cài đặt thông báo</h1>
+            <p>Chọn khi nào hộp thoại tóm tắt lỗi được phép hiện, để không bị làm phiền giữa lúc đang làm việc.</p>
+        </div>
+    </header>
+
+    <section class="card-x next-card" aria-label="Lịch báo hiện tại">
+        <span class="stat-icon"><Icon Name="history" Size="22" /></span>
+        <div class="next-text" role="status">
+            <span class="next-label">Lần báo tiếp theo</span>
+            <strong class="next-value num">@NextText</strong>
+            <span class="muted num">
+                @if (Store.LastRun is { } last) { <text>Lần gần nhất: @last.ToString("HH:mm dd/MM")</text> }
+                @if (saved) { <span class="saved"> · Đã tự động lưu</span> }
+            </span>
+        </div>
+        <button type="button" class="btn btn-ghost" @onclick="Store.RequestPreview">
+            <Icon Name="alert" Size="16" />Xem thử ngay
+        </button>
+    </section>
+
+    <section class="card-x pad mb-4" aria-labelledby="when-title">
+        <h2 class="card-title" id="when-title">Khi nào hiện hộp thoại tóm tắt lỗi</h2>
+        <fieldset class="opts">
+            <legend class="visually-hidden">Chế độ hiển thị</legend>
+
+            <label class="opt @(Mode == AlertDisplaySchedule.Daily ? "on" : "")">
+                <input type="radio" name="mode" class="form-check-input" checked="@(Mode == AlertDisplaySchedule.Daily)"
+                       @onchange="() => SetMode(AlertDisplaySchedule.Daily)" />
+                <span class="opt-body">
+                    <strong>Một lần mỗi ngày vào giờ cố định</strong>
+                    <span class="muted">Mặc định 23:59. Tóm tắt các lỗi từ lần báo trước đến giờ.</span>
+                </span>
+                <input type="time" class="form-control opt-input" aria-label="Giờ hiển thị trong ngày"
+                       value="@Store.Current.Time" disabled="@(Mode != AlertDisplaySchedule.Daily)" @onchange="SetTime" />
+            </label>
+
+            <label class="opt @(Mode == AlertDisplaySchedule.Interval ? "on" : "")">
+                <input type="radio" name="mode" class="form-check-input" checked="@(Mode == AlertDisplaySchedule.Interval)"
+                       @onchange="() => SetMode(AlertDisplaySchedule.Interval)" />
+                <span class="opt-body">
+                    <strong>Lặp lại theo chu kỳ</strong>
+                    <span class="muted">Báo định kỳ; nếu không có lỗi mới thì không hiện gì.</span>
+                </span>
+                <select class="form-select opt-input" aria-label="Chu kỳ hiển thị"
+                        disabled="@(Mode != AlertDisplaySchedule.Interval)" @onchange="SetMinutes">
+                    @foreach (var minutes in Choices)
+                    {
+                        <option value="@minutes" selected="@(Store.Current.Minutes == minutes)">@Label(minutes)</option>
+                    }
+                </select>
+            </label>
+
+            <label class="opt @(Mode == AlertDisplaySchedule.Immediate ? "on" : "")">
+                <input type="radio" name="mode" class="form-check-input" checked="@(Mode == AlertDisplaySchedule.Immediate)"
+                       @onchange="() => SetMode(AlertDisplaySchedule.Immediate)" />
+                <span class="opt-body">
+                    <strong>Ngay lập tức</strong>
+                    <span class="muted">Hộp thoại bật lên ngay khi có cảnh báo nguy hiểm hoặc lỗi cảm biến. Dễ bị gián đoạn nhất.</span>
+                </span>
+            </label>
+
+            <label class="opt @(Mode == AlertDisplaySchedule.Off ? "on" : "")">
+                <input type="radio" name="mode" class="form-check-input" checked="@(Mode == AlertDisplaySchedule.Off)"
+                       @onchange="() => SetMode(AlertDisplaySchedule.Off)" />
+                <span class="opt-body">
+                    <strong>Không bao giờ hiện hộp thoại</strong>
+                    <span class="muted">Vẫn thấy huy hiệu số chưa đọc trên menu và xem được trang Lịch sử lỗi.</span>
+                </span>
+            </label>
+        </fieldset>
+
+        <div class="opt-extra">
+            <div class="form-check form-switch m-0">
+                <input type="checkbox" role="switch" id="on-open" class="form-check-input" checked="@Store.Current.OnOpen"
+                       disabled="@(Mode == AlertDisplaySchedule.Off)" @onchange="SetOnOpen" />
+                <label class="form-check-label" for="on-open">Cũng hiện tóm tắt khi mở phần mềm</label>
+            </div>
+            <span class="muted">Chỉ hiện nếu có lỗi từ lần báo trước.</span>
+        </div>
+    </section>
+
+    <section class="card-x pad" aria-labelledby="note-title">
+        <h2 class="card-title" id="note-title">Lưu ý</h2>
+        <ul class="notes muted">
+            <li>Cài đặt được lưu trên trình duyệt này, mỗi trình duyệt có thể đặt khác nhau. Giờ tính theo giờ của máy chủ.</li>
+            <li>Hộp thoại chỉ hiện khi tab đang mở. Nếu đến giờ mà tab đóng, nó hiện một lần ở lần mở kế tiếp.</li>
+        </ul>
+    </section>
+</div>
+
+@code {
+    private static readonly int[] Choices = AlertDisplaySchedule.IntervalChoices;
+    private bool saved;
+    private System.Threading.Timer? savedTimer;
+
+    private string Mode => Store.Current.Mode;
+
+    private string NextText
+    {
+        get
+        {
+            var now = DateTimeOffset.Now;
+            switch (Mode)
+            {
+                case AlertDisplaySchedule.Immediate: return "Ngay khi có sự cố";
+                case AlertDisplaySchedule.Off: return "Đã tắt";
+            }
+            if (AlertDisplaySchedule.NextDue(Store.Current, now, Store.LastRun) is not { } at) return "Đã tắt";
+            if (at <= now) return "Sắp tới";
+            var day = at.Date == now.Date ? "hôm nay" : at.Date == now.Date.AddDays(1) ? "ngày mai" : at.ToString("dd/MM");
+            return $"{at:HH:mm} {day}";
+        }
+    }
+
+    protected override void OnInitialized() => Store.Changed += OnStoreChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await Store.LoadAsync();
+    }
+
+    private void OnStoreChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task Save(AlertDisplaySettings value)
+    {
+        await Store.SaveAsync(value);
+        saved = true;
+        savedTimer?.Dispose();
+        savedTimer = new System.Threading.Timer(
+            _ => _ = InvokeAsync(() => { saved = false; StateHasChanged(); }), null, 2500, Timeout.Infinite);
+    }
+
+    private Task SetMode(string mode) => Save(Store.Current with { Mode = mode });
+
+    private Task SetTime(ChangeEventArgs e) => Save(Store.Current with { Time = e.Value?.ToString() ?? "" });
+
+    private Task SetMinutes(ChangeEventArgs e) =>
+        Save(Store.Current with { Minutes = int.TryParse(e.Value?.ToString(), out var m) ? m : Store.Current.Minutes });
+
+    private Task SetOnOpen(ChangeEventArgs e) => Save(Store.Current with { OnOpen = e.Value is true });
+
+    private static string Label(int minutes) => minutes < 60 ? $"Mỗi {minutes} phút" : $"Mỗi {minutes / 60} giờ";
+
+    public void Dispose()
+    {
+        Store.Changed -= OnStoreChanged;
+        savedTimer?.Dispose();
+    }
+}

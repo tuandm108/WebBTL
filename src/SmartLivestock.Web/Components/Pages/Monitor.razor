@@ -1,0 +1,128 @@
+@page "/monitor/{BarnId:guid}"
+@using SmartLivestock.Contracts
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
+@inject IHttpClientFactory ClientFactory
+@inject IConfiguration Config
+
+<PageTitle>@(barn?.Name ?? "Chi tiết chuồng") | Smart Livestock</PageTitle>
+
+<a class="back-link" href=""><Icon Name="arrow-left" Size="16" />Danh sách giám sát</a>
+
+<header class="page-head">
+    <div>
+        <h1>@(barn?.Name ?? "Chi tiết chuồng")</h1>
+        @if (barn is not null)
+        {
+            <p>@barn.Code · sức chứa @barn.Capacity · @barn.DeviceCount thiết bị</p>
+        }
+    </div>
+    <div class="d-flex align-items-center gap-3">
+        @if (barn is not null)
+        {
+            <span class="chip chip-@status.Css"><span class="dot"></span>@status.Text</span>
+        }
+        <span class="conn" role="status"><span class="dot @(connected ? "dot-live" : "")" style="@(connected ? "" : "color:var(--bad)")"></span>@connectionStatus</span>
+    </div>
+</header>
+
+@if (error is not null)
+{
+    <div class="alert alert-warning" role="alert">@error</div>
+}
+else if (readings.Count == 0)
+{
+    @if (barn is null)
+    {
+        <div class="metrics" aria-busy="true" aria-label="Đang tải">
+            @for (var i = 0; i < 4; i++) { <div class="card-x metric"><div class="skeleton" style="width:40%"></div><div class="skeleton mt-4" style="height:2.4rem;width:70%"></div></div> }
+        </div>
+    }
+    else
+    {
+        <div class="card-x empty" role="status">
+            <Icon Name="activity" Size="40" />
+            <h2>Chưa có dữ liệu cảm biến</h2>
+            <p>Chuồng này chưa nhận được tin nhắn nào. Hãy kiểm tra thiết bị Edge hoặc khởi chạy Simulator.</p>
+        </div>
+    }
+}
+else
+{
+    <section class="metrics" aria-label="Chỉ số môi trường">
+        @foreach (var reading in ordered)
+        {
+            <article class="card-x metric m-@reading.Metric sev-@BarnStatus.Severity(reading)">
+                <div class="metric-head"><Icon Name="@reading.Metric" Size="18" />@BarnStatus.Label(reading.Metric)</div>
+                <div class="metric-value num">@reading.Value.ToString("0.##")<small>@reading.Unit</small></div>
+                <div class="metric-foot">
+                    <span>@BarnStatus.Age(reading.MeasuredAt)</span>
+                    @{ var chip = BarnStatus.Of(reading); }
+                    <span class="chip chip-@chip.Css">
+                        @if (chip.Css == "ok") { <span class="dot"></span> } else { <Icon Name="alert" Size="13" /> }@chip.Text
+                    </span>
+                </div>
+            </article>
+        }
+    </section>
+}
+
+@code {
+    private readonly List<ReadingDto> readings = [];
+    private HubConnection? hub;
+    private System.Threading.Timer? ticker;
+    [Parameter] public Guid BarnId { get; set; }
+    private BarnDto? barn;
+    private string? error;
+    private string connectionStatus = "Đang kết nối";
+    private bool connected;
+
+    private IEnumerable<ReadingDto> ordered => BarnStatus.Metrics
+        .Select(m => readings.FirstOrDefault(x => x.Metric == m)).OfType<ReadingDto>();
+    private (string Css, string Text) status => BarnStatus.Of(readings);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var apiBase = Config["Api:BaseUrl"] ?? "http://localhost:5215";
+        try
+        {
+            var client = ClientFactory.CreateClient("api");
+            barn = await client.GetFromJsonAsync<BarnDto>($"api/barns/{BarnId:D}");
+            var latest = await client.GetFromJsonAsync<List<ReadingDto>>(
+                $"api/barns/{BarnId:D}/environment/latest");
+            if (latest is not null) readings.AddRange(latest);
+            hub = new HubConnectionBuilder()
+                .WithUrl($"{apiBase.TrimEnd('/')}/hubs/monitoring")
+                .WithAutomaticReconnect()
+                .Build();
+            hub.On<ReadingDto>("telemetryUpdated", dto => _ = InvokeAsync(() =>
+            {
+                readings.RemoveAll(x => x.Metric == dto.Metric);
+                readings.Add(dto);
+                StateHasChanged();
+            }));
+            hub.Reconnected += async _ =>
+            {
+                await hub.InvokeAsync("SubscribeBarn", BarnId.ToString("D"));
+                await InvokeAsync(() => { connectionStatus = "Trực tiếp"; connected = true; StateHasChanged(); });
+            };
+            await hub.StartAsync();
+            await hub.InvokeAsync("SubscribeBarn", BarnId.ToString("D"));
+            connectionStatus = "Trực tiếp";
+            connected = true;
+            // Re-render every 5 s so "age" and the online/offline chip stay honest between messages.
+            ticker = new System.Threading.Timer(_ => _ = InvokeAsync(StateHasChanged), null, 5000, 5000);
+        }
+        catch (Exception ex)
+        {
+            error = $"Không thể tải dữ liệu: {ex.Message}";
+            connectionStatus = "Mất kết nối";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ticker?.Dispose();
+        if (hub is not null) await hub.DisposeAsync();
+    }
+}

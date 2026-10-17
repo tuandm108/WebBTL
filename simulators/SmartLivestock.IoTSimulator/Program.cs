@@ -19,7 +19,6 @@ var host = Environment.GetEnvironmentVariable("MQTT_HOST") ?? "localhost";
 var port = int.TryParse(Environment.GetEnvironmentVariable("MQTT_PORT"), out var configuredPort)
     ? configuredPort : localCredentials is null ? 1883 : 1884;
 var scenario = Environment.GetEnvironmentVariable("SCENARIO") ?? "NORMAL";
-var topic = $"smartlivestock/v1/{DemoIds.Farm:D}/{DemoIds.Barn:D}/edge-001/telemetry";
 var factory = new MqttClientFactory();
 using var client = factory.CreateMqttClient();
 var options = new MqttClientOptionsBuilder().WithTcpServer(host, port)
@@ -27,19 +26,24 @@ var options = new MqttClientOptionsBuilder().WithTcpServer(host, port)
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdown.Cancel(); };
 long sequence = 0;
-Console.WriteLine($"Simulator scenario: {scenario}");
+Console.WriteLine($"Simulator scenario: {scenario}, barns: {DemoIds.SeedBarnCount}");
 while (!shutdown.IsCancellationRequested)
 {
     try
     {
         if (!client.IsConnected) await client.ConnectAsync(options, shutdown.Token);
-        var message = SensorSimulator.Create(scenario, ++sequence, DateTimeOffset.UtcNow);
-        var payload = JsonSerializer.Serialize(message, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        var mqttMessage = new MqttApplicationMessageBuilder().WithTopic(topic)
-            .WithPayload(payload).WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-            .Build();
-        await client.PublishAsync(mqttMessage, shutdown.Token);
-        Console.WriteLine($"{message.TimestampUtc:O} seq={sequence} temperature={message.Readings[0].Value}");
+        sequence++;
+        for (var barn = 1; barn <= DemoIds.SeedBarnCount; barn++)
+        {
+            var message = SensorSimulator.Create(scenario, sequence, DateTimeOffset.UtcNow, barn);
+            var payload = JsonSerializer.Serialize(message, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var topic = $"smartlivestock/v1/{DemoIds.Farm:D}/{DemoIds.BarnId(barn):D}/{message.DeviceId}/telemetry";
+            var mqttMessage = new MqttApplicationMessageBuilder().WithTopic(topic)
+                .WithPayload(payload).WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                .Build();
+            await client.PublishAsync(mqttMessage, shutdown.Token);
+        }
+        Console.WriteLine($"{DateTimeOffset.UtcNow:O} seq={sequence} published {DemoIds.SeedBarnCount} barns");
         await Task.Delay(TimeSpan.FromSeconds(5), shutdown.Token);
     }
     catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { break; }

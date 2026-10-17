@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using SmartLivestock.Api;
@@ -35,8 +36,11 @@ if (app.Environment.IsDevelopment())
 }
 app.UseExceptionHandler(error => error.Run(async context =>
 {
-    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-    await Results.Problem(statusCode: 500, title: "Internal server error").ExecuteAsync(context);
+    var status = context.Features.Get<IExceptionHandlerFeature>()?.Error is BadHttpRequestException bad
+        ? bad.StatusCode : StatusCodes.Status500InternalServerError;
+    context.Response.StatusCode = status;
+    await Results.Problem(statusCode: status, title: status == 500 ? "Internal server error" : "Bad request")
+        .ExecuteAsync(context);
 }));
 app.UseHttpsRedirection();
 
@@ -45,6 +49,9 @@ app.MapGet("/health/ready", async (AppDbContext db, CancellationToken ct) =>
     await db.Database.CanConnectAsync(ct)
         ? Results.Ok(new { status = "ready" })
         : Results.Problem(statusCode: 503, title: "Database unavailable"));
+
+app.MapBarnEndpoints();
+app.MapAlertEndpoints();
 
 app.MapGet("/api/barns/{barnId:guid}/environment/latest", async (Guid barnId, AppDbContext db, CancellationToken ct) =>
 {

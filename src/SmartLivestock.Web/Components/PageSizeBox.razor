@@ -1,0 +1,29 @@
+@* "Rows per page": pick a suggestion or type any number from 1 to Max. Out-of-range values are clamped, text is ignored. *@
+<label class="page-size">
+    <span class="muted">@Label</span>
+    <input type="number" class="form-control" inputmode="numeric" min="1" max="@Max" step="1"
+           list="@ListId" title="Chọn hoặc gõ số từ 1 đến @Max" value="@Value"
+           @key="edits" @onchange="Changed" />
+    <datalist id="@ListId">
+        @foreach (var size in Presets) { <option value="@size"></option> }
+    </datalist>
+</label>
+
+@code {
+    [Parameter] public string Label { get; set; } = "Số dòng/trang";
+    [Parameter] public int Value { get; set; } = 10;
+    [Parameter] public int Max { get; set; } = 50;
+    [Parameter] public string ListId { get; set; } = "page-size-options";
+    [Parameter] public EventCallback<int> OnChange { get; set; }
+
+    private int edits; // new key after each edit so the box re-renders even if the clamped value equals the old one
+
+    private IEnumerable<int> Presets => new[] { 5, 10, 20, Max }.Where(x => x <= Max).Distinct();
+
+    private async Task Changed(ChangeEventArgs e)
+    {
+        var size = int.TryParse(e.Value?.ToString(), out var typed) ? Math.Clamp(typed, 1, Max) : Value;
+        edits++;
+        await OnChange.InvokeAsync(size);
+    }
+}

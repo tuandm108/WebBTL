@@ -22,6 +22,70 @@ namespace SmartLivestock.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("SmartLivestock.Domain.Alert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BarnId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ClearedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DedupeKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Metric")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<decimal?>("PeakValue")
+                        .HasPrecision(14, 4)
+                        .HasColumnType("decimal(14,4)");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FirstSeenAt");
+
+                    b.HasIndex("BarnId", "DedupeKey")
+                        .IsUnique()
+                        .HasFilter("[State] = 'active'");
+
+                    b.ToTable("Alerts");
+                });
+
             modelBuilder.Entity("SmartLivestock.Domain.Barn", b =>
                 {
                     b.Property<Guid>("Id")
@@ -38,6 +102,9 @@ namespace SmartLivestock.Infrastructure.Migrations
 
                     b.Property<Guid>("FarmId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Monitored")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -58,7 +125,179 @@ namespace SmartLivestock.Infrastructure.Migrations
                             Capacity = 100,
                             Code = "BARN-01",
                             FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
                             Name = "Chuồng mẫu"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f002"),
+                            Capacity = 100,
+                            Code = "BARN-02",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 02"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f003"),
+                            Capacity = 120,
+                            Code = "BARN-03",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 03"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f004"),
+                            Capacity = 140,
+                            Code = "BARN-04",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 04"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f005"),
+                            Capacity = 60,
+                            Code = "BARN-05",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 05"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f006"),
+                            Capacity = 80,
+                            Code = "BARN-06",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 06"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f007"),
+                            Capacity = 100,
+                            Code = "BARN-07",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 07"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f008"),
+                            Capacity = 120,
+                            Code = "BARN-08",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 08"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f009"),
+                            Capacity = 140,
+                            Code = "BARN-09",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 09"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f010"),
+                            Capacity = 60,
+                            Code = "BARN-10",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 10"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f011"),
+                            Capacity = 80,
+                            Code = "BARN-11",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 11"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f012"),
+                            Capacity = 100,
+                            Code = "BARN-12",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 12"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f013"),
+                            Capacity = 120,
+                            Code = "BARN-13",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 13"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f014"),
+                            Capacity = 140,
+                            Code = "BARN-14",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 14"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f015"),
+                            Capacity = 60,
+                            Code = "BARN-15",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 15"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f016"),
+                            Capacity = 80,
+                            Code = "BARN-16",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 16"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f017"),
+                            Capacity = 100,
+                            Code = "BARN-17",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 17"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f018"),
+                            Capacity = 120,
+                            Code = "BARN-18",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 18"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f019"),
+                            Capacity = 140,
+                            Code = "BARN-19",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 19"
+                        },
+                        new
+                        {
+                            Id = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f020"),
+                            Capacity = 60,
+                            Code = "BARN-20",
+                            FarmId = new Guid("79f40d21-f916-42d2-a83a-16d5144b9f01"),
+                            Monitored = true,
+                            Name = "Chuồng 20"
                         });
                 });
 
@@ -94,6 +333,120 @@ namespace SmartLivestock.Infrastructure.Migrations
                             Id = new Guid("e996724d-0a30-461d-93d4-65190594d001"),
                             BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f001"),
                             ExternalId = "edge-001"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d002"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f002"),
+                            ExternalId = "edge-002"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d003"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f003"),
+                            ExternalId = "edge-003"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d004"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f004"),
+                            ExternalId = "edge-004"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d005"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f005"),
+                            ExternalId = "edge-005"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d006"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f006"),
+                            ExternalId = "edge-006"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d007"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f007"),
+                            ExternalId = "edge-007"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d008"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f008"),
+                            ExternalId = "edge-008"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d009"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f009"),
+                            ExternalId = "edge-009"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d010"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f010"),
+                            ExternalId = "edge-010"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d011"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f011"),
+                            ExternalId = "edge-011"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d012"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f012"),
+                            ExternalId = "edge-012"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d013"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f013"),
+                            ExternalId = "edge-013"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d014"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f014"),
+                            ExternalId = "edge-014"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d015"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f015"),
+                            ExternalId = "edge-015"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d016"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f016"),
+                            ExternalId = "edge-016"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d017"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f017"),
+                            ExternalId = "edge-017"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d018"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f018"),
+                            ExternalId = "edge-018"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d019"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f019"),
+                            ExternalId = "edge-019"
+                        },
+                        new
+                        {
+                            Id = new Guid("e996724d-0a30-461d-93d4-65190594d020"),
+                            BarnId = new Guid("c15308f0-224b-4dd2-9aba-764ea7a2f020"),
+                            ExternalId = "edge-020"
                         });
                 });
 
@@ -191,6 +544,17 @@ namespace SmartLivestock.Infrastructure.Migrations
                     b.HasIndex("DeviceId", "Metric", "MeasuredAt");
 
                     b.ToTable("SensorReadings");
+                });
+
+            modelBuilder.Entity("SmartLivestock.Domain.Alert", b =>
+                {
+                    b.HasOne("SmartLivestock.Domain.Barn", "Barn")
+                        .WithMany()
+                        .HasForeignKey("BarnId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Barn");
                 });
 
             modelBuilder.Entity("SmartLivestock.Domain.Barn", b =>

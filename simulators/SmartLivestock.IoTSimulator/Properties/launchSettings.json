@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "demo-alerts": {
+      "commandName": "Project",
+      "environmentVariables": { "SCENARIO": "DEMO_ALERTS" }
+    },
+    "normal": {
+      "commandName": "Project",
+      "environmentVariables": { "SCENARIO": "NORMAL" }
+    }
+  }
+}

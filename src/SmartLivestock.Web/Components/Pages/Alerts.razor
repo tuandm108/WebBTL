@@ -1,0 +1,294 @@
+@page "/alerts"
+@implements IDisposable
+@using SmartLivestock.Contracts
+@using SmartLivestock.Web.Services
+@inject IHttpClientFactory ClientFactory
+@inject AlertFeed Feed
+@inject Services.PageSizeStore SizeStore
+
+<PageTitle>Lịch sử lỗi | Smart Livestock</PageTitle>
+
+<header class="page-head">
+    <div>
+        <h1>Lịch sử lỗi</h1>
+        <p>Các đợt cảnh báo, nguy hiểm và lỗi cảm biến của từng chuồng, cập nhật theo thời gian thực.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        @if (Feed.UnreadCount > 0) { <span class="chip chip-warn" role="status">@Feed.UnreadCount chưa đọc</span> }
+        <button type="button" class="btn btn-ghost" disabled="@(Feed.UnreadCount == 0 || busy)" title="Áp dụng cho mọi cảnh báo khớp bộ lọc hiện tại, kể cả ở các trang khác" @onclick="MarkAllReadAsync">
+            <Icon Name="check" Size="16" />Đánh dấu tất cả kết quả đã đọc
+        </button>
+    </div>
+</header>
+
+<section class="card-x pad mb-4" aria-label="Bộ lọc">
+    <div class="filter-bar">
+        <div class="filter-group" role="group" aria-label="Khoảng thời gian">
+            @foreach (var (key, label) in Ranges)
+            {
+                <button type="button" class="btn btn-ghost @(range == key ? "on" : "")" aria-pressed="@(range == key)"
+                        @onclick="() => SetRange(key)">@label</button>
+            }
+            @if (range == "custom" && customFrom is { } cf)
+            {
+                <span class="chip chip-warn">Từ @cf.ToLocalTime().ToString("HH:mm dd/MM")</span>
+            }
+        </div>
+        <div class="float-field">
+            <label class="field-label" for="f-barn">Chuồng</label>
+            <select id="f-barn" class="form-select" value="@barnId" @onchange="e => Filter(() => barnId = e.Value?.ToString() ?? string.Empty)">
+                <option value="">Tất cả chuồng</option>
+                @foreach (var barn in barns) { <option value="@barn.Id">@barn.Name (@barn.Code)</option> }
+            </select>
+        </div>
+        <div class="float-field">
+            <label class="field-label" for="f-sev">Mức độ</label>
+            <select id="f-sev" class="form-select" value="@severity" @onchange="e => Filter(() => severity = e.Value?.ToString() ?? string.Empty)">
+                <option value="">Tất cả mức</option>
+                <option value="critical">Nguy hiểm</option>
+                <option value="warning">Cảnh báo</option>
+                <option value="fault">Cảm biến lỗi</option>
+            </select>
+        </div>
+        <div class="float-field">
+            <label class="field-label" for="f-state">Trạng thái</label>
+            <select id="f-state" class="form-select" value="@state" @onchange="e => Filter(() => state = e.Value?.ToString() ?? string.Empty)">
+                <option value="">Tất cả</option>
+                <option value="active">Đang diễn ra</option>
+                <option value="cleared">Đã hết</option>
+            </select>
+        </div>
+        <div class="float-field">
+            <label class="field-label" for="f-read">Đọc</label>
+            <select id="f-read" class="form-select" value="@readFilter" @onchange="e => Filter(() => readFilter = e.Value?.ToString() ?? string.Empty)">
+                <option value="">Tất cả</option>
+                <option value="unread">Chưa đọc</option>
+                <option value="read">Đã đọc</option>
+            </select>
+        </div>
+    </div>
+</section>
+
+@if (error is not null)
+{
+    <div class="alert alert-warning" role="alert">@error</div>
+}
+
+<section class="card-x" aria-label="Danh sách lỗi">
+@if (result is null)
+{
+    @if (error is null)
+    {
+        <div class="p-4" aria-busy="true" aria-label="Đang tải">
+            @for (var i = 0; i < 5; i++) { <div class="skeleton mb-4" style="width:@(60 + i * 7)%"></div> }
+        </div>
+    }
+}
+else if (result.Total == 0)
+{
+    <div class="empty" role="status">
+        <Icon Name="history" Size="40" />
+        <h2>Không có lỗi nào trong bộ lọc này</h2>
+        <p>Thử mở rộng khoảng thời gian hoặc bỏ bớt điều kiện lọc.</p>
+    </div>
+}
+else
+{
+    <div class="table-wrap">
+        <table class="table table-hover stack-table fit-rows fit-alerts">
+            <thead>
+                <tr>
+                    <th scope="col">Bắt đầu</th><th scope="col">Mức độ</th><th scope="col">Chuồng</th>
+                    <th scope="col">Nội dung</th><th scope="col">Đỉnh</th><th scope="col">Trạng thái</th><th scope="col"><span class="visually-hidden">Đọc</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var a in result.Items)
+            {
+                <tr class="@(a.State == "active" ? (a.Severity == AlertSeverity.Warning ? "row-warn" : "row-danger") : "") @(a.ReadAt is null ? "unread" : "is-read")">
+                    <td class="cell-name num">@if (a.ReadAt is null) { <span class="unread-dot" role="img" aria-label="Chưa đọc" title="Chưa đọc"></span> }@a.FirstSeenAt.ToLocalTime().ToString("HH:mm:ss dd/MM")<span class="cell-sub">Kéo dài @Duration(a)</span></td>
+                    <td class="cell-status">@Chip(a.Severity)</td>
+                    <td class="cell-barn" data-label="Chuồng"><a href="monitor/@a.BarnId">@a.BarnName</a><span class="cell-sub">@a.BarnCode</span></td>
+                    <td data-label="Nội dung">@Describe(a)</td>
+                    <td class="num" data-label="Đỉnh">@(a.PeakValue is { } v ? $"{v:0.##} {a.Unit}" : "–")</td>
+                    <td data-label="Trạng thái">
+                        @if (a.State == "active")
+                        {
+                            <span class="chip chip-danger"><span class="dot dot-live"></span>Đang diễn ra</span>
+                        }
+                        else
+                        {
+                            <span class="muted num">Hết lúc @a.ClearedAt?.ToLocalTime().ToString("HH:mm:ss")</span>
+                        }
+                    </td>
+                    <td class="cell-actions">
+                        <button type="button" class="btn btn-ghost" disabled="@busy" aria-label="@(a.ReadAt is null ? "Đánh dấu đã đọc" : "Đánh dấu chưa đọc") cảnh báo @a.BarnName" @onclick="() => ToggleReadAsync(a)">
+                            @if (a.ReadAt is null) { <Icon Name="check" Size="14" /><text>Đã đọc</text> } else { <text>Bỏ đã đọc</text> }
+                        </button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <div class="pager pager-grid">
+        <span class="pager-info num">Hiển thị <strong>@((result.Page - 1) * result.PageSize + 1)–@((result.Page - 1) * result.PageSize + result.Items.Count)</strong> trong <strong>@result.Total</strong> lỗi</span>
+        <Pager Page="result.Page" Pages="pages" OnPage="GoTo" />
+        <PageSizeBox Label="Số lỗi/trang" Value="pageSize" Max="MaxPageSize" OnChange="ChangePageSize" />
+    </div>
+}
+</section>
+
+@code {
+    private static readonly (string Key, string Label)[] Ranges =
+        [("1h", "1 giờ"), ("24h", "24 giờ"), ("7d", "7 ngày"), ("all", "Tất cả")];
+
+    /// <summary>Set when the page is opened from the "while you were away" dialog (?from=...).</summary>
+    [SupplyParameterFromQuery(Name = "from")] public string? QueryFromText { get; set; }
+    [SupplyParameterFromQuery(Name = "state")] public string? QueryState { get; set; }
+
+    private PagedResult<AlertDto>? result;
+    private List<BarnDto> barns = [];
+    private string range = "24h";
+    private DateTimeOffset? customFrom;
+    private string barnId = "", severity = "", state = "", readFilter = "";
+    private bool busy;
+    private const int MaxPageSize = 50;
+    private const string PageSizeKey = "sl.alerts.pageSize";
+    private int page = 1;
+    private int pageSize = 10;
+    private string? error;
+    private string? appliedQueryFrom;
+    private string? appliedQueryState;
+
+    private int pages => result is null ? 1 : Math.Max(1, (result.Total + result.PageSize - 1) / result.PageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Feed.Changed += OnFeedChanged;
+        pageSize = await SizeStore.LoadAsync(PageSizeKey, pageSize, MaxPageSize);
+        try { barns = await ClientFactory.CreateClient("api").GetFromJsonAsync<List<BarnDto>>("api/barns") ?? []; }
+        catch (Exception) { /* filter list stays empty; the table still loads */ }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (QueryFromText != appliedQueryFrom || QueryState != appliedQueryState)
+        {
+            appliedQueryFrom = QueryFromText;
+            appliedQueryState = QueryState;
+            // Blazor cannot bind DateTimeOffset from the query string, so parse the ISO 8601 text here.
+            if (DateTimeOffset.TryParse(QueryFromText, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var from)) { range = "custom"; customFrom = from; }
+            if (QueryState is "active" or "cleared") { state = QueryState; range = "all"; }
+            page = 1;
+        }
+        await LoadAsync();
+    }
+
+    private async Task SetRange(string key)
+    {
+        range = key;
+        customFrom = null;
+        page = 1;
+        await LoadAsync();
+    }
+
+    private async Task Filter(Action apply)
+    {
+        apply();
+        page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ChangePageSize(int size)
+    {
+        pageSize = size;
+        page = 1;
+        await SizeStore.SaveAsync(PageSizeKey, size);
+        await LoadAsync();
+    }
+
+    private async Task GoTo(int target)
+    {
+        page = target;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        DateTimeOffset? from = range switch
+        {
+            "1h" => now.AddHours(-1), "24h" => now.AddHours(-24), "7d" => now.AddDays(-7),
+            "custom" => customFrom, _ => null
+        };
+        var query = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (from is { } f) query.Add($"from={Uri.EscapeDataString(f.ToString("O"))}");
+        if (barnId != "") query.Add($"barnId={barnId}");
+        if (severity != "") query.Add($"severity={severity}");
+        if (state != "") query.Add($"state={state}");
+        if (readFilter != "") query.Add($"unread={(readFilter == "unread" ? "true" : "false")}");
+        try
+        {
+            result = await ClientFactory.CreateClient("api")
+                .GetFromJsonAsync<PagedResult<AlertDto>>($"api/alerts?{string.Join('&', query)}");
+            page = result?.Page ?? 1;
+            error = null;
+        }
+        catch (Exception ex) { error = $"Không thể tải lịch sử lỗi: {ex.Message}"; }
+    }
+
+    private async Task ToggleReadAsync(AlertDto alert) =>
+        await MarkAsync(new AlertReadRequest(Ids: [alert.Id], Read: alert.ReadAt is null));
+
+    /// <summary>Marks everything matching the current filters as read (not just this page).</summary>
+    private async Task MarkAllReadAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        DateTimeOffset? from = range switch
+        {
+            "1h" => now.AddHours(-1), "24h" => now.AddHours(-24), "7d" => now.AddDays(-7),
+            "custom" => customFrom, _ => null
+        };
+        await MarkAsync(new AlertReadRequest(All: true, From: from,
+            BarnId: Guid.TryParse(barnId, out var b) ? b : null,
+            Severity: severity == "" ? null : severity, State: state == "" ? null : state));
+    }
+
+    private async Task MarkAsync(AlertReadRequest request)
+    {
+        busy = true;
+        try
+        {
+            (await ClientFactory.CreateClient("api").PostAsJsonAsync("api/alerts/mark-read", request)).EnsureSuccessStatusCode();
+            error = null; // the server pushes "alertsRead", which refreshes the list and counters
+        }
+        catch (Exception ex) { error = $"Không thể cập nhật trạng thái đã đọc: {ex.Message}"; }
+        finally { busy = false; }
+        await LoadAsync();
+    }
+
+    private void OnFeedChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    private static string Duration(AlertDto a)
+    {
+        var span = (a.ClearedAt ?? DateTimeOffset.UtcNow) - a.FirstSeenAt;
+        return span.TotalSeconds < 60 ? $"{(int)span.TotalSeconds} giây"
+            : span.TotalMinutes < 60 ? $"{(int)span.TotalMinutes} phút {span.Seconds} giây"
+            : $"{(int)span.TotalHours} giờ {span.Minutes} phút";
+    }
+
+    private static string Describe(AlertDto a) => a.Type == "sensor_fault"
+        ? "Cảm biến lỗi hoặc dữ liệu không hợp lệ"
+        : $"{BarnStatus.Label(a.Metric ?? "")} vượt ngưỡng {(a.Severity == AlertSeverity.Critical ? "nguy hiểm" : "cảnh báo")}";
+
+    private RenderFragment Chip(string sev) => sev switch
+    {
+        AlertSeverity.Critical => @<span class="chip chip-danger"><Icon Name="alert" Size="13" />Nguy hiểm</span>,
+        AlertSeverity.Fault => @<span class="chip chip-danger"><Icon Name="alert" Size="13" />Cảm biến lỗi</span>,
+        _ => @<span class="chip chip-warn"><Icon Name="alert" Size="13" />Cảnh báo</span>
+    };
+
+    public void Dispose() => Feed.Changed -= OnFeedChanged;
+}

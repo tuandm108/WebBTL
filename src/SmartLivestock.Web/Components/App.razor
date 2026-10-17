@@ -1,20 +1,35 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+@inject IWebHostEnvironment Env
+<!DOCTYPE html>
+<html lang="vi">
 
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f241f" />
+    <meta name="color-scheme" content="light dark" />
     <base href="/" />
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="SmartLivestock.Web.styles.css" />
+    <link rel="stylesheet" href="@Versioned("app.css")" />
+
     <link rel="icon" type="image/png" href="favicon.png" />
-    <HeadOutlet />
+    <HeadOutlet @rendermode="Interactive" />
 </head>
 
 <body>
-    <Routes />
+    <Routes @rendermode="Interactive" />
+    <script src="@Versioned("app.js")"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
 
 </html>
+
+@code {
+    // The whole app is one interactive circuit (so the alert dialog and nav badge survive navigation).
+    // Prerendering is off: it would open a second SignalR connection per page load and run every API call twice.
+    private static readonly IComponentRenderMode Interactive = new InteractiveServerRenderMode(prerender: false);
+
+    // Our own css/js are not fingerprinted, so a stale browser cache (or a half-applied Hot Reload) can show new
+    // markup with old styles. The query string changes whenever the file does.
+    private string Versioned(string path) =>
+        Env.WebRootFileProvider.GetFileInfo(path) is { Exists: true } file ? $"{path}?v={file.LastModified.UtcTicks}" : path;
+}

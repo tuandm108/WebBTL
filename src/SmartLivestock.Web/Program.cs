@@ -5,6 +5,10 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddHttpClient("api", client =>
     client.BaseAddress = new Uri(builder.Configuration["Api:BaseUrl"] ?? "http://localhost:5215"));
 
+builder.Services.AddScoped<SmartLivestock.Web.Services.AlertFeed>();
+builder.Services.AddScoped<SmartLivestock.Web.Services.AlertSettingsStore>();
+builder.Services.AddScoped<SmartLivestock.Web.Services.PageSizeStore>();
+
 var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {

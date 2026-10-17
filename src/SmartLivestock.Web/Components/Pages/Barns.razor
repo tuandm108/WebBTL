@@ -1,0 +1,226 @@
+@page "/barns"
+@implements IDisposable
+@using SmartLivestock.Contracts
+@inject IHttpClientFactory ClientFactory
+@inject IJSRuntime JS
+@inject Services.PageSizeStore SizeStore
+
+<PageTitle>Quản lý chuồng | Smart Livestock</PageTitle>
+
+<header class="page-head">
+    <div>
+        <h1>Quản lý chuồng nuôi</h1>
+        <p>Thêm, chỉnh sửa chuồng và chọn chuồng nào được đưa vào trang giám sát.</p>
+    </div>
+</header>
+
+@if (message is not null)
+{
+    <div class="alert @(isError ? "alert-warning" : "alert-success")" role="status">@message</div>
+}
+
+<section class="card-x pad mb-4" aria-label="Biểu mẫu chuồng">
+    <h2 class="card-title">@(editingId is null ? "Thêm chuồng mới" : "Chỉnh sửa chuồng")</h2>
+    <EditForm Model="form" OnValidSubmit="SaveAsync" FormName="barn-form">
+        <DataAnnotationsValidator />
+        <div class="form-bar">
+            <div class="float-field">
+                <label class="field-label" for="barn-code">Mã chuồng*</label>
+                <InputText id="barn-code" class="form-control" @bind-Value="form.Code" placeholder="BARN-21" />
+            </div>
+            <div class="float-field">
+                <label class="field-label" for="barn-name">Tên chuồng*</label>
+                <InputText id="barn-name" class="form-control" @bind-Value="form.Name" placeholder="Chuồng 21" />
+            </div>
+            <div class="float-field">
+                <label class="field-label" for="barn-cap">Sức chứa</label>
+                <InputNumber id="barn-cap" class="form-control" @bind-Value="form.Capacity" />
+            </div>
+            <div class="form-check form-switch mb-2">
+                <InputCheckbox class="form-check-input" id="monitored" @bind-Value="form.Monitored" role="switch" />
+                <label class="form-check-label" for="monitored">Giám sát</label>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit">
+                    <Icon Name="@(editingId is null ? "plus" : "pencil")" Size="16" />@(editingId is null ? "Thêm chuồng" : "Lưu thay đổi")
+                </button>
+                @if (editingId is not null)
+                {
+                    <button class="btn btn-ghost" type="button" @onclick="Reset">Hủy</button>
+                }
+            </div>
+        </div>
+        <ValidationSummary class="mt-2" />
+    </EditForm>
+</section>
+
+<section class="card-x" aria-label="Danh sách chuồng">
+@if (barns is null)
+{
+    <div class="p-4" aria-busy="true" aria-label="Đang tải">
+        @for (var i = 0; i < 5; i++) { <div class="skeleton mb-4" style="width:@(60 + i * 7)%"></div> }
+    </div>
+}
+else if (barns.Count == 0)
+{
+    <div class="empty" role="status">
+        <Icon Name="barn" Size="40" />
+        <h2>Chưa có chuồng nào</h2>
+        <p>Dùng biểu mẫu phía trên để thêm chuồng đầu tiên.</p>
+    </div>
+}
+else
+{
+    <div class="table-wrap">
+        <table class="table table-hover stack-table fit-rows fit-barns">
+            <thead>
+                <tr>
+                    <th scope="col">Chuồng</th><th scope="col">Sức chứa</th><th scope="col">Thiết bị</th>
+                    <th scope="col">Giám sát</th><th scope="col"><span class="visually-hidden">Thao tác</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var barn in PagedBarns)
+            {
+                <tr>
+                    <td class="cell-name">@barn.Name<span class="cell-sub">@barn.Code</span></td>
+                    <td class="num" data-label="Sức chứa">@barn.Capacity</td>
+                    <td class="num" data-label="Thiết bị">@barn.DeviceCount</td>
+                    <td data-label="Giám sát">
+                        <div class="form-check form-switch m-0">
+                            <input type="checkbox" role="switch" class="form-check-input" checked="@barn.Monitored"
+                                   aria-label="Giám sát @barn.Name" @onchange="() => ToggleAsync(barn)" />
+                        </div>
+                    </td>
+                    <td class="cell-actions">
+                        <div class="row-actions">
+                            <a class="btn btn-ghost" href="monitor/@barn.Id" aria-label="Xem @barn.Name"><Icon Name="activity" Size="14" />Xem</a>
+                            <button class="btn btn-ghost" aria-label="Sửa @barn.Name" @onclick="() => Edit(barn)"><Icon Name="pencil" Size="14" />Sửa</button>
+                            <button class="btn btn-ghost danger" aria-label="Xóa @barn.Name" @onclick="() => DeleteAsync(barn)"><Icon Name="trash" Size="14" />Xóa</button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <div class="pager pager-grid">
+        <span class="pager-info num">Hiển thị <strong>@(first)–@(last)</strong> trong <strong>@barns.Count</strong> chuồng</span>
+        <Pager Page="page" Pages="pages" OnPage="GoTo" />
+        <PageSizeBox Label="Số chuồng/trang" Value="pageSize" Max="MaxPageSize" OnChange="ChangePageSize" />
+    </div>
+}
+</section>
+
+@code {
+    private sealed class BarnForm
+    {
+        [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(64)]
+        public string Code { get; set; } = "";
+        [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(200)]
+        public string Name { get; set; } = "";
+        [System.ComponentModel.DataAnnotations.Range(1, 100000)]
+        public int Capacity { get; set; } = 100;
+        public bool Monitored { get; set; } = true;
+    }
+
+    private List<BarnDto>? barns;
+    private BarnForm form = new();
+    private Guid? editingId;
+    private string? message;
+    private System.Threading.Timer? clearTimer;
+    private bool isError;
+
+    private const int MaxPageSize = 50;
+    private const string PageSizeKey = "sl.barns.pageSize";
+    private int page = 1;
+    private int pageSize = 10;
+
+    // The API returns every barn, so paging is done here; the list is short and already in memory.
+    private IEnumerable<BarnDto> PagedBarns => (barns ?? []).Skip((page - 1) * pageSize).Take(pageSize);
+    private int pages => Math.Max(1, ((barns?.Count ?? 0) + pageSize - 1) / pageSize);
+    private int first => barns is { Count: > 0 } ? (page - 1) * pageSize + 1 : 0;
+    private int last => Math.Min(page * pageSize, barns?.Count ?? 0);
+
+    private void GoTo(int target) => page = Math.Clamp(target, 1, pages);
+
+    private async Task ChangePageSize(int size)
+    {
+        pageSize = size;
+        page = 1;
+        await SizeStore.SaveAsync(PageSizeKey, size);
+    }
+
+    private HttpClient Api => ClientFactory.CreateClient("api");
+
+    protected override async Task OnInitializedAsync()
+    {
+        pageSize = await SizeStore.LoadAsync(PageSizeKey, pageSize, MaxPageSize);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try { barns = await Api.GetFromJsonAsync<List<BarnDto>>("api/barns"); page = Math.Clamp(page, 1, pages); }
+        catch (Exception ex) { Fail($"Không thể tải danh sách: {ex.Message}"); barns ??= []; }
+    }
+
+    private void Edit(BarnDto barn)
+    {
+        editingId = barn.Id;
+        form = new BarnForm { Code = barn.Code, Name = barn.Name, Capacity = barn.Capacity, Monitored = barn.Monitored };
+        message = null;
+    }
+
+    private void Reset() { editingId = null; form = new(); }
+
+    private async Task SaveAsync()
+    {
+        var input = new BarnInput(form.Code, form.Name, form.Capacity, form.Monitored);
+        var response = editingId is null
+            ? await Api.PostAsJsonAsync("api/barns", input)
+            : await Api.PutAsJsonAsync($"api/barns/{editingId:D}", input);
+        if (await Report(response, editingId is null ? "Đã thêm chuồng." : "Đã lưu thay đổi.")) Reset();
+        await LoadAsync();
+    }
+
+    private async Task ToggleAsync(BarnDto barn)
+    {
+        var input = new BarnInput(barn.Code, barn.Name, barn.Capacity, !barn.Monitored);
+        await Report(await Api.PutAsJsonAsync($"api/barns/{barn.Id:D}", input),
+            input.Monitored ? $"{barn.Code} đã được thêm vào giám sát." : $"{barn.Code} đã bỏ khỏi giám sát.");
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(BarnDto barn)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Xóa chuồng {barn.Code}?")) return;
+        await Report(await Api.DeleteAsync($"api/barns/{barn.Id:D}"), "Đã xóa chuồng.");
+        await LoadAsync();
+    }
+
+    private async Task<bool> Report(HttpResponseMessage response, string success)
+    {
+        if (response.IsSuccessStatusCode) { Notify(success, false); return true; }
+        // API returns { "error": "..." } for 400/409.
+        string? error = null;
+        try { error = (await response.Content.ReadFromJsonAsync<Dictionary<string, string>>())?.GetValueOrDefault("error"); }
+        catch (Exception) { /* empty or non-JSON body, e.g. 404 */ }
+        Fail(error ?? $"Lỗi {(int)response.StatusCode}");
+        return false;
+    }
+
+    private void Fail(string text) => Notify(text, true);
+
+    /// <summary>Shows a floating status message that clears itself, so it never pushes the table down.</summary>
+    private void Notify(string text, bool error)
+    {
+        message = text;
+        isError = error;
+        clearTimer?.Dispose();
+        clearTimer = new System.Threading.Timer(
+            _ => _ = InvokeAsync(() => { message = null; StateHasChanged(); }), null, 5000, Timeout.Infinite);
+    }
+
+    public void Dispose() => clearTimer?.Dispose();
+}

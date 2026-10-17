@@ -1,0 +1,282 @@
+@implements IAsyncDisposable
+@using System.Globalization
+@using SmartLivestock.Contracts
+@using SmartLivestock.Web.Services
+@inject AlertFeed Feed
+@inject AlertSettingsStore Settings
+@inject IHttpClientFactory ClientFactory
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* Native <dialog>: showModal() gives top-layer rendering, focus trap, inert page and Esc handling. *@
+<dialog @ref="dialog" class="alert-dialog" role="alertdialog" aria-modal="true"
+        aria-labelledby="ad-title" aria-describedby="ad-desc" @onclose="OnClosed">
+    @if (mode != Mode.None)
+    {
+        <header class="ad-head @HeadClass">
+            <Icon Name="alert" Size="22" />
+            <h2 id="ad-title">@Title</h2>
+        </header>
+        <div class="ad-body" id="ad-desc">
+            @if (mode == Mode.Summary && summary is not null)
+            {
+                @if (summary.Total == 0)
+                {
+                    <p class="m-0">Từ <strong>@Time(summary.From)</strong> đến <strong>@Time(summary.To)</strong>: không có lỗi nào chưa đọc.</p>
+                }
+                else
+                {
+                    <p class="m-0">
+                        Từ <strong>@Time(summary.From)</strong> đến <strong>@Time(summary.To)</strong>:
+                        <strong>@summary.Barns.Count chuồng</strong> có sự cố, tổng <strong>@summary.Total đợt lỗi</strong>
+                        (@summary.Critical nguy hiểm, @summary.Warning cảnh báo, @summary.Fault lỗi cảm biến).
+                    </p>
+                    @foreach (var barn in summary.Barns.Take(MaxBarns))
+                    {
+                        <section class="ad-barn" aria-label="@barn.BarnName">
+                            <div class="ad-barn-head">
+                                <span>@barn.BarnName <span class="muted">· @barn.BarnCode</span></span>
+                                @Chip(barn.WorstSeverity)
+                            </div>
+                            @foreach (var alert in barn.Alerts.Take(3)) { @Line(alert) }
+                            @if (barn.Count > 3) { <div class="ad-line muted">và @(barn.Count - 3) sự cố khác</div> }
+                        </section>
+                    }
+                    @if (summary.Barns.Count > MaxBarns)
+                    {
+                        <p class="muted mt-3 mb-0">và @(summary.Barns.Count - MaxBarns) chuồng khác, xem đầy đủ ở lịch sử lỗi.</p>
+                    }
+                }
+            }
+            else if (mode == Mode.Live)
+            {
+                <p class="m-0">Vừa phát hiện lúc <strong>@Time(live.Values.Max(x => x.Alert.LastSeenAt))</strong>:</p>
+                @foreach (var change in live.Values.OrderByDescending(x => AlertSeverity.Rank(x.Alert.Severity)))
+                {
+                    <section class="ad-barn" aria-label="@change.Alert.BarnName">
+                        <div class="ad-barn-head">
+                            <span>@change.Alert.BarnName <span class="muted">· @change.Alert.BarnCode</span></span>
+                            @Chip(change.Alert.Severity)
+                        </div>
+                        @Line(change.Alert)
+                    </section>
+                }
+            }
+            <p class="ad-note muted">
+                Hộp thoại này hiện @Cadence.
+                <a href="settings" @onclick="CloseAsync">Đổi cài đặt</a>
+            </p>
+        </div>
+        <footer class="ad-foot">
+            <button type="button" class="btn btn-ghost" @onclick="CloseAsync">Đóng</button>
+            @if (mode == Mode.Live || summary is { Total: > 0 })
+            {
+                <button type="button" class="btn btn-ghost" @onclick="MarkReadAsync"><Icon Name="check" Size="16" />Đánh dấu đã đọc</button>
+            }
+            <button type="button" class="btn btn-primary" autofocus @onclick="GoToHistoryAsync">
+                <Icon Name="history" Size="16" />Xem lịch sử lỗi
+            </button>
+        </footer>
+    }
+</dialog>
+
+@code {
+    private enum Mode { None, Summary, Live }
+
+    private const int MaxBarns = 6;
+    private const string LastSeenKey = "sl.alerts.lastSeen";
+    private const string ShownKey = "sl.alerts.shownThisSession";
+
+    private ElementReference dialog;
+    private Mode mode = Mode.None;
+    private bool openRequested;
+    private bool preview;
+    private bool busy;
+    private AlertSummaryDto? summary;
+    private readonly Dictionary<Guid, AlertChangedDto> live = [];
+    private System.Threading.Timer? ticker;
+
+    private string worst => mode == Mode.Summary
+        ? summary?.Barns.Select(b => b.WorstSeverity).MaxBy(AlertSeverity.Rank) ?? ""
+        : live.Values.Select(x => x.Alert.Severity).MaxBy(AlertSeverity.Rank) ?? "";
+
+    private string HeadClass => worst switch { "" => "ad-head-ok", AlertSeverity.Warning => "ad-head-warn", _ => "" };
+
+    private string Title => mode == Mode.Live ? "Cảnh báo mới"
+        : summary is { Total: 0 } ? "Không có lỗi chưa đọc" : "Tóm tắt lỗi các chuồng";
+
+    private string Cadence => Settings.Current.Mode switch
+    {
+        AlertDisplaySchedule.Daily => $"mỗi ngày lúc {Settings.Current.Time}",
+        AlertDisplaySchedule.Interval => $"mỗi {Settings.Current.Minutes} phút",
+        _ => "ngay khi có cảnh báo nguy hiểm"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Feed.Live += OnLive;
+            Settings.PreviewRequested += OnPreview;
+            await Settings.LoadAsync();
+            await Feed.StartAsync();
+            // The schedule starts counting from the first visit, so a new browser never gets a backlog dialog.
+            if (Settings.LastRun is null) await Settings.SetLastRunAsync(DateTimeOffset.UtcNow);
+            await ShowOnOpenAsync();
+            ticker = new System.Threading.Timer(_ => _ = InvokeAsync(TickAsync), null, 5_000, 20_000);
+        }
+        if (openRequested)
+        {
+            openRequested = false;
+            await JS.InvokeVoidAsync("slDialog.show", dialog);
+        }
+    }
+
+    /// <summary>Optional: once per browser session, a digest on open (only if the user turned that on).</summary>
+    private async Task ShowOnOpenAsync()
+    {
+        try
+        {
+            if (await JS.InvokeAsync<string?>("sessionStorage.getItem", ShownKey) is not null) return;
+            await JS.InvokeVoidAsync("sessionStorage.setItem", ShownKey, "1");
+        }
+        catch (Exception) { return; }
+        if (Settings.Current.OnOpen && Settings.Current.Mode != AlertDisplaySchedule.Off)
+            await FireDigestAsync(isPreview: false);
+    }
+
+    private async Task TickAsync()
+    {
+        if (mode != Mode.None || busy) return; // never stack dialogs; the next tick retries
+        if (AlertDisplaySchedule.IsDue(Settings.Current, DateTimeOffset.Now, Settings.LastRun))
+            await FireDigestAsync(isPreview: false);
+    }
+
+    private void OnPreview() =>
+        _ = InvokeAsync(async () => { if (mode == Mode.None && !busy) await FireDigestAsync(isPreview: true); });
+
+    /// <summary>Summary of everything since the last digest (a preview always looks at the last 24 hours).</summary>
+    private async Task FireDigestAsync(bool isPreview)
+    {
+        busy = true;
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var from = now.AddHours(-24);
+            if (!isPreview)
+            {
+                var raw = await JS.InvokeAsync<string?>("localStorage.getItem", LastSeenKey);
+                if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var seen))
+                    from = seen < now.AddDays(-7) ? now.AddDays(-7) : seen;
+            }
+            if (now - from < TimeSpan.FromSeconds(10))
+            {
+                if (!isPreview) await Settings.SetLastRunAsync(now);
+                return;
+            }
+
+            var url = $"api/alerts/summary?from={Uri.EscapeDataString(from.ToString("O"))}&to={Uri.EscapeDataString(now.ToString("O"))}&unreadOnly=true";
+            var result = await ClientFactory.CreateClient("api").GetFromJsonAsync<AlertSummaryDto>(url);
+            if (!isPreview) await Settings.SetLastRunAsync(now);
+            if (result is null) return;
+            if (result.Total > 0 || isPreview)
+            {
+                summary = result;
+                preview = isPreview;
+                Open(Mode.Summary);
+            }
+            else await JS.InvokeVoidAsync("localStorage.setItem", LastSeenKey, now.ToString("O"));
+        }
+        catch (Exception) { /* API unreachable or storage blocked: stay quiet and retry on the next tick */ }
+        finally { busy = false; }
+    }
+
+    private void OnLive(AlertChangedDto change)
+    {
+        // Only in "immediate" mode, and only for critical alerts and sensor faults; the banner covers the rest.
+        if (Settings.Current.Mode != AlertDisplaySchedule.Immediate) return;
+        if (change.Change == "cleared" || change.Alert.Severity == AlertSeverity.Warning) return;
+        _ = InvokeAsync(() =>
+        {
+            if (mode == Mode.Summary) return; // a digest is on screen; the history page will list this one
+            live[change.Alert.Id] = change;
+            preview = false;
+            Open(Mode.Live);
+        });
+    }
+
+    private void Open(Mode next)
+    {
+        mode = next;
+        openRequested = true;
+        StateHasChanged();
+    }
+
+    private async Task OnClosed()
+    {
+        var wasPreview = preview;
+        mode = Mode.None;
+        preview = false;
+        live.Clear();
+        summary = null;
+        // A preview must not mark real alerts as seen, or the next scheduled digest would skip them.
+        if (!wasPreview)
+        {
+            try { await JS.InvokeVoidAsync("localStorage.setItem", LastSeenKey, DateTimeOffset.UtcNow.ToString("O")); }
+            catch (Exception) { }
+        }
+        StateHasChanged();
+    }
+
+    private async Task CloseAsync() => await JS.InvokeVoidAsync("slDialog.close", dialog);
+
+    /// <summary>Marks what the dialog lists as read, then closes it.</summary>
+    private async Task MarkReadAsync()
+    {
+        try
+        {
+            var request = mode == Mode.Summary && summary is not null
+                ? new AlertReadRequest(All: true, From: summary.From, To: summary.To)
+                : new AlertReadRequest(Ids: live.Keys.ToList());
+            (await ClientFactory.CreateClient("api").PostAsJsonAsync("api/alerts/mark-read", request)).EnsureSuccessStatusCode();
+        }
+        catch (Exception) { /* leave them unread; the history page can retry */ }
+        await CloseAsync();
+    }
+
+    private async Task GoToHistoryAsync()
+    {
+        var href = mode == Mode.Summary && summary is not null
+            ? $"alerts?from={Uri.EscapeDataString(summary.From.ToString("O"))}"
+            : "alerts?state=active";
+        await CloseAsync();
+        Nav.NavigateTo(href);
+    }
+
+    private static string Time(DateTimeOffset value) => value.ToLocalTime().ToString("HH:mm dd/MM");
+
+    private static string Clock(DateTimeOffset value) => value.ToLocalTime().ToString("HH:mm:ss");
+
+    private RenderFragment Chip(string severity) => severity switch
+    {
+        AlertSeverity.Critical => @<span class="chip chip-danger"><Icon Name="alert" Size="13" />Nguy hiểm</span>,
+        AlertSeverity.Fault => @<span class="chip chip-danger"><Icon Name="alert" Size="13" />Cảm biến lỗi</span>,
+        _ => @<span class="chip chip-warn"><Icon Name="alert" Size="13" />Cảnh báo</span>
+    };
+
+    private RenderFragment Line(AlertDto a) => @<div class="ad-line">
+        <span>
+            @if (a.Type == "sensor_fault") { <text>Cảm biến lỗi hoặc dữ liệu không hợp lệ</text> }
+            else { <text>@BarnStatus.Label(a.Metric ?? "") vượt ngưỡng @(a.Severity == AlertSeverity.Critical ? "nguy hiểm" : "cảnh báo")@(a.PeakValue is { } v ? $" · đỉnh {v:0.##} {a.Unit}" : "")</text> }
+            <span class="muted"> · @Clock(a.FirstSeenAt) → @(a.ClearedAt is { } end ? Clock(end) : "đang diễn ra")</span>
+        </span>
+    </div>;
+
+    public ValueTask DisposeAsync()
+    {
+        ticker?.Dispose();
+        Feed.Live -= OnLive;
+        Settings.PreviewRequested -= OnPreview;
+        return ValueTask.CompletedTask;
+    }
+}

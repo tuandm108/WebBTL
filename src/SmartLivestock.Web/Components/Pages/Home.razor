@@ -1,91 +1,229 @@
 @page "/"
-@rendermode InteractiveServer
 @using SmartLivestock.Contracts
 @using Microsoft.AspNetCore.SignalR.Client
 @implements IAsyncDisposable
 @inject IHttpClientFactory ClientFactory
 @inject IConfiguration Config
+@inject Services.PageSizeStore SizeStore
 
 <PageTitle>Giám sát chuồng nuôi | Smart Livestock</PageTitle>
 
-<h1>Giám sát chuồng nuôi</h1>
-<p>Dữ liệu mô phỏng từ Edge · Chuồng mẫu <code>@DemoIds.Barn</code></p>
+<header class="page-head">
+    <div>
+        <h1>Giám sát chuồng nuôi</h1>
+        <p>Môi trường các chuồng được chọn giám sát, cập nhật theo thời gian thực.</p>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+        <span class="conn" role="status"><span class="dot @(connected ? "dot-live" : "")" style="@(connected ? "" : "color:var(--bad)")"></span>@connectionStatus</span>
+    </div>
+</header>
 
 @if (error is not null)
 {
     <div class="alert alert-warning" role="alert">@error</div>
 }
-else if (readings.Count == 0)
+
+@if (result is { Total: > 0 })
 {
-    <p>Đang chờ dữ liệu cảm biến. Hãy khởi chạy API và Simulator.</p>
+    <section class="stats" aria-label="Tổng quan">
+        <div class="card-x stat">
+            <span class="stat-icon"><Icon Name="barn" Size="22" /></span>
+            <div><div class="stat-value num">@result.Total</div><div class="stat-label">Chuồng đang giám sát</div></div>
+        </div>
+        <div class="card-x stat">
+            <span class="stat-icon ok"><Icon Name="activity" Size="22" /></span>
+            <div><div class="stat-value num">@online<span class="muted" style="font-size:1rem"> / @result.Items.Count</span></div><div class="stat-label">Trực tuyến (trang này)</div></div>
+        </div>
+        <div class="card-x stat">
+            <span class="stat-icon @(attention > 0 ? "bad" : "")"><Icon Name="alert" Size="22" /></span>
+            <div><div class="stat-value num">@attention</div><div class="stat-label">Cần chú ý (trang này)</div></div>
+        </div>
+    </section>
+}
+
+<BarnPicker OnChanged="OnSelectionChanged" />
+
+<section class="card-x" aria-label="Danh sách chuồng giám sát">
+@if (result is null)
+{
+    @if (error is null)
+    {
+        <div class="p-4" aria-busy="true" aria-label="Đang tải">
+            @for (var i = 0; i < 5; i++) { <div class="skeleton mb-4" style="width:@(60 + i * 7)%"></div> }
+        </div>
+    }
+}
+else if (result.Total == 0)
+{
+    <div class="empty" role="status">
+        <Icon Name="barn" Size="40" />
+        <h2>Chưa chọn chuồng nào để giám sát</h2>
+        <p>Dùng ô tìm kiếm phía trên để chọn các chuồng cần theo dõi, chúng sẽ hiện ở bảng này.</p>
+    </div>
 }
 else
 {
-    <div class="sensor-grid">
-        @foreach (var reading in readings.OrderBy(x => x.Metric))
-        {
-            <div class="sensor-card">
-                <div class="sensor-label">@Label(reading.Metric)</div>
-                <div class="sensor-value">@reading.Value.ToString("0.##") <small>@reading.Unit</small></div>
-                <div class="sensor-status">@reading.Quality · @reading.MeasuredAt.ToLocalTime().ToString("HH:mm:ss")</div>
-            </div>
-        }
+    <div class="table-wrap">
+        <table class="table table-hover stack-table fit-rows">
+            <thead>
+                <tr>
+                    <th scope="col">Chuồng</th>
+                    <th scope="col">Trạng thái</th>
+                    @foreach (var metric in BarnStatus.Metrics)
+                    {
+                        <th scope="col"><span class="th-icon"><Icon Name="@metric" Size="14" />@BarnStatus.Label(metric)</span></th>
+                    }
+                    <th scope="col">Cập nhật</th>
+                    <th scope="col"><span class="visually-hidden">Thao tác</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in result.Items)
+            {
+                var status = StatusOf(item.Barn.Id);
+                <tr class="row-@status.Css">
+                    <td class="cell-name">@item.Barn.Name<span class="cell-sub">@item.Barn.Code</span></td>
+                    <td class="cell-status"><span class="chip chip-@status.Css"><span class="dot"></span>@status.Text</span></td>
+                    @foreach (var metric in BarnStatus.Metrics)
+                    {
+                        <td class="num" data-label="@BarnStatus.Label(metric)">@Cell(item.Barn.Id, metric)</td>
+                    }
+                    <td class="num muted" data-label="Cập nhật">@Updated(item.Barn.Id)</td>
+                    <td class="text-end cell-actions"><a class="btn btn-ghost" href="monitor/@item.Barn.Id" aria-label="Chi tiết @item.Barn.Name">Chi tiết<Icon Name="arrow-right" Size="14" /></a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pager pager-grid">
+        <span class="pager-info num">Hiển thị <strong>@first–@last</strong> trong <strong>@result.Total</strong> chuồng</span>
+        <Pager Page="page" Pages="pages" OnPage="GoTo" />
+        <PageSizeBox Label="Số chuồng/trang" Value="pageSize" Max="MaxPageSize" OnChange="ChangePageSize" />
     </div>
 }
-<p class="connection-status">Kết nối trực tiếp: @connectionStatus</p>
+</section>
 
 @code {
-    private readonly List<ReadingDto> readings = [];
+    private const int MaxPageSize = 50; // the API clamps to the same limit
+    private const string PageSizeStorageKey = "sl.monitor.pageSize";
+
+    private PagedResult<MonitoredBarnDto>? result;
+    private readonly Dictionary<(Guid Barn, string Metric), ReadingDto> latest = [];
+    private List<Guid> subscribed = [];
     private HubConnection? hub;
+    private int page = 1;
+    private int pageSize = 10;
     private string? error;
-    private string connectionStatus = "đang kết nối";
+    private string connectionStatus = "Đang kết nối";
+    private bool connected;
+    private System.Threading.Timer? ticker;
+
+    private int online => result?.Items.Count(x => StatusOf(x.Barn.Id).Css == "ok") ?? 0;
+    private int attention => result?.Items.Count(x => StatusOf(x.Barn.Id).Css != "ok") ?? 0;
+    private int pages => result is null ? 1 : Math.Max(1, (result.Total + pageSize - 1) / pageSize);
+    private int first => result is null || result.Total == 0 ? 0 : (page - 1) * pageSize + 1;
+    private int last => result is null ? 0 : (page - 1) * pageSize + result.Items.Count;
 
     protected override async Task OnInitializedAsync()
     {
+        pageSize = await SizeStore.LoadAsync(PageSizeStorageKey, pageSize, MaxPageSize);
         var apiBase = Config["Api:BaseUrl"] ?? "http://localhost:5215";
         try
         {
-            var client = ClientFactory.CreateClient("api");
-            var latest = await client.GetFromJsonAsync<List<ReadingDto>>(
-                $"api/barns/{DemoIds.Barn:D}/environment/latest");
-            if (latest is not null) readings.AddRange(latest);
             hub = new HubConnectionBuilder()
                 .WithUrl($"{apiBase.TrimEnd('/')}/hubs/monitoring")
                 .WithAutomaticReconnect()
                 .Build();
             hub.On<ReadingDto>("telemetryUpdated", dto => _ = InvokeAsync(() =>
             {
-                readings.RemoveAll(x => x.Metric == dto.Metric);
-                readings.Add(dto);
+                latest[(dto.BarnId, dto.Metric)] = dto;
                 StateHasChanged();
             }));
             hub.Reconnected += async _ =>
             {
-                await hub.InvokeAsync("SubscribeBarn", DemoIds.Barn.ToString("D"));
-                await InvokeAsync(() => { connectionStatus = "đã kết nối"; StateHasChanged(); });
+                await InvokeAsync(async () =>
+                {
+                    await LoadAsync(page, resubscribe: true);
+                    connectionStatus = "Trực tiếp"; connected = true;
+                    StateHasChanged();
+                });
             };
             await hub.StartAsync();
-            await hub.InvokeAsync("SubscribeBarn", DemoIds.Barn.ToString("D"));
-            connectionStatus = "đã kết nối";
+            connectionStatus = "Trực tiếp"; connected = true;
+            await LoadAsync(1);
+            // Re-render every 5 s so "age" and the online/offline chip stay honest between messages.
+            ticker = new System.Threading.Timer(_ => _ = InvokeAsync(StateHasChanged), null, 5000, 5000);
         }
         catch (Exception ex)
         {
             error = $"Không thể tải dữ liệu: {ex.Message}";
-            connectionStatus = "mất kết nối";
+            connectionStatus = "Mất kết nối"; connected = false;
         }
     }
 
-    private static string Label(string metric) => metric switch
+    private async Task LoadAsync(int target, bool resubscribe = false)
     {
-        "temperature" => "Nhiệt độ",
-        "humidity" => "Độ ẩm",
-        "nh3" => "NH₃",
-        "h2s" => "H₂S",
-        _ => metric
-    };
+        var client = ClientFactory.CreateClient("api");
+        var loaded = await client.GetFromJsonAsync<PagedResult<MonitoredBarnDto>>(
+            $"api/monitoring/barns?page={target}&pageSize={pageSize}");
+        if (loaded is null) return;
+
+        latest.Clear();
+        foreach (var reading in loaded.Items.SelectMany(x => x.Readings))
+            latest[(reading.BarnId, reading.Metric)] = reading;
+        result = loaded;
+        page = loaded.Page;
+        error = null;
+
+        var ids = loaded.Items.Select(x => x.Barn.Id).ToList();
+        if (hub is { State: HubConnectionState.Connected })
+        {
+            foreach (var id in subscribed.Where(x => resubscribe || !ids.Contains(x)))
+                await hub.InvokeAsync("UnsubscribeBarn", id.ToString("D"));
+            foreach (var id in ids.Where(x => resubscribe || !subscribed.Contains(x)))
+                await hub.InvokeAsync("SubscribeBarn", id.ToString("D"));
+        }
+        subscribed = ids;
+    }
+
+    private async Task OnSelectionChanged() => await Run(() => LoadAsync(page));
+
+    private async Task GoTo(int target)
+    {
+        if (target < 1 || target > pages || target == page) return;
+        await Run(() => LoadAsync(target));
+    }
+
+    private async Task ChangePageSize(int size)
+    {
+        pageSize = size;
+        await SizeStore.SaveAsync(PageSizeStorageKey, size);
+        await Run(() => LoadAsync(1));
+    }
+
+    private async Task Run(Func<Task> action)
+    {
+        try { await action(); }
+        catch (Exception ex) { error = $"Không thể tải dữ liệu: {ex.Message}"; }
+    }
+
+    private IReadOnlyCollection<ReadingDto> ReadingsOf(Guid barn) =>
+        BarnStatus.Metrics.Where(m => latest.ContainsKey((barn, m))).Select(m => latest[(barn, m)]).ToList();
+
+    private (string Css, string Text) StatusOf(Guid barn) => BarnStatus.Of(ReadingsOf(barn));
+
+    private RenderFragment Cell(Guid barn, string metric) => latest.TryGetValue((barn, metric), out var r)
+        ? @<span class="cell-metric @(r.Quality == "valid" ? "" : "cell-bad") sev-@BarnStatus.Severity(r)">@r.Value.ToString("0.##")<small>@r.Unit</small>
+            @if (BarnStatus.Severity(r) != "normal") { <Icon Name="alert" Size="13" /><span class="visually-hidden">@BarnStatus.Of(r).Text</span> }</span>
+        : @<span class="muted">–</span>;
+
+    private string Updated(Guid barn) =>
+        ReadingsOf(barn) is { Count: > 0 } rs ? BarnStatus.Age(rs.Max(x => x.MeasuredAt)) : "chưa có dữ liệu";
 
     public async ValueTask DisposeAsync()
     {
+        ticker?.Dispose();
         if (hub is not null) await hub.DisposeAsync();
     }
 }

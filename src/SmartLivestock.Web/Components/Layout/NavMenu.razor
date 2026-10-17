@@ -1,8 +1,30 @@
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid"><a class="navbar-brand" href="">Smart Livestock</a></div>
-</div>
-<nav class="nav flex-column">
-    <div class="nav-item px-3">
-        <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Giám sát</NavLink>
-    </div>
-</nav>
+@implements IDisposable
+@inject SmartLivestock.Web.Services.AlertFeed Feed
+
+<aside class="sidebar">
+    <a class="brand" href="" aria-label="Smart Livestock - trang chủ">
+        <span class="brand-mark"><Icon Name="sprout" Size="22" /></span>
+        <span class="brand-text">Smart Livestock<small>Giám sát chuồng nuôi</small></span>
+    </a>
+    <nav class="nav-list" aria-label="Điều hướng chính">
+        <NavLink class="nav-item" href="" Match="NavLinkMatch.All"><Icon Name="dashboard" />Giám sát</NavLink>
+        <NavLink class="nav-item" href="alerts">
+            <Icon Name="history" />Lịch sử lỗi
+            @if (Feed.UnreadCount > 0)
+            {
+                <span class="nav-badge" role="status" aria-label="@Feed.UnreadCount cảnh báo chưa đọc">@Feed.UnreadCount</span>
+            }
+        </NavLink>
+        <NavLink class="nav-item" href="barns"><Icon Name="barn" />Quản lý chuồng</NavLink>
+        <NavLink class="nav-item" href="settings"><Icon Name="settings" />Cài đặt</NavLink>
+    </nav>
+    <p class="sidebar-note"><span class="dot dot-live"></span>Dữ liệu mô phỏng từ thiết bị Edge</p>
+</aside>
+
+@code {
+    protected override void OnInitialized() => Feed.Changed += OnFeedChanged;
+
+    private void OnFeedChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Feed.Changed -= OnFeedChanged;
+}
