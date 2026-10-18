@@ -26,6 +26,7 @@ builder.Services.AddSignalR();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Database")
         ?? throw new InvalidOperationException("ConnectionStrings:Database is required")));
+builder.Services.AddSingleton<MqttConnectionStatus>();
 builder.Services.AddHostedService<TelemetryMqttService>();
 
 var app = builder.Build();
@@ -45,12 +46,17 @@ app.UseExceptionHandler(error => error.Run(async context =>
 app.UseHttpsRedirection();
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
-app.MapGet("/health/ready", async (AppDbContext db, CancellationToken ct) =>
-    await db.Database.CanConnectAsync(ct)
+app.MapGet("/health/ready", async (AppDbContext db, MqttConnectionStatus mqtt, CancellationToken ct) =>
+{
+    if (!await db.Database.CanConnectAsync(ct))
+        return Results.Problem(statusCode: 503, title: "Database unavailable");
+    return mqtt.IsConnected
         ? Results.Ok(new { status = "ready" })
-        : Results.Problem(statusCode: 503, title: "Database unavailable"));
+        : Results.Problem(statusCode: 503, title: "MQTT unavailable");
+});
 
 app.MapBarnEndpoints();
+app.MapAnimalEndpoints();
 app.MapAlertEndpoints();
 
 app.MapGet("/api/barns/{barnId:guid}/environment/latest", async (Guid barnId, AppDbContext db, CancellationToken ct) =>

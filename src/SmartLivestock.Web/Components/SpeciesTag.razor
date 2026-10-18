@@ -1,0 +1,16 @@
+@using SmartLivestock.Contracts
+
+<span class="species-tag species-@StyleCode">
+    @LivestockSpecies.NameOf(Code)
+    @if (Count is { } count)
+    {
+        <span class="species-tag-count">@count</span>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Code { get; set; } = "";
+    [Parameter] public int? Count { get; set; }
+
+    private string StyleCode => LivestockSpecies.Normalize(Code) ?? "other";
+}

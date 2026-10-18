@@ -12,7 +12,12 @@ public static class AlertSeverity
 public sealed record AlertDto(
     Guid Id, Guid BarnId, string BarnCode, string BarnName, string Type, string? Metric, string Severity,
     string State, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, DateTimeOffset? ClearedAt,
-    decimal? PeakValue, string? Unit, DateTimeOffset? ReadAt = null);
+    decimal? PeakValue, string? Unit, DateTimeOffset? ReadAt = null)
+{
+    // Filled for history rows only. Current barn occupancy is not a snapshot from FirstSeenAt.
+    public int? CurrentAnimalCount { get; init; }
+    public IReadOnlyList<SpeciesCountDto>? CurrentSpecies { get; init; }
+}
 
 /// <summary>Pushed over SignalR as "alertChanged". Change is raised, escalated or cleared.</summary>
 public sealed record AlertChangedDto(string Change, AlertDto Alert);

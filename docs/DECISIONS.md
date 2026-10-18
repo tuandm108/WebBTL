@@ -10,5 +10,5 @@
 - D-008: MVP assumes simulator only. Real hardware integration requires an approved equipment profile, local fail-safe behavior and physical acceptance tests.
 - D-009: Local development uses SQL Server LocalDB and a native Mosquitto process on loopback port 1884. Docker is optional later and no longer part of the required setup.
 - D-010: Schema migration is an explicit deployment step rather than automatic API startup action.
-- D-011: Current MQTT subscriber needs durable-session/replay and failure tests before ingestion is marked done.
-- D-012: `DemoAlertProfile` (Contracts) holds synthetic warning/critical levels used only by the simulator and the UI demo highlighting. It is not a safety standard and does not replace per-profile thresholds with hysteresis (F13). Invalid or stale readings never count as an alert level. Alert-dialog behaviour is specified in ALERT_DESIGN.md and is not built yet.
+- D-011: MQTT subscriber uses a persistent client session and retries unacknowledged messages while connected. Broker persistence across broker restarts and replay/failure tests are still needed before ingestion is marked done.
+- D-012: `DemoAlertProfile` (Contracts) holds synthetic warning/critical levels used only by the simulator and the UI demo highlighting. It is not a safety standard and does not replace per-profile thresholds with hysteresis (F13). Invalid or stale readings never count as an alert level. The alert dialog is implemented for the demo; see ALERT_DESIGN.md for its intended behaviour.

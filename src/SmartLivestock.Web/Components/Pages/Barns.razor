@@ -75,7 +75,7 @@ else
         <table class="table table-hover stack-table fit-rows fit-barns">
             <thead>
                 <tr>
-                    <th scope="col">Chuồng</th><th scope="col">Sức chứa</th><th scope="col">Thiết bị</th>
+                    <th scope="col">Chuồng</th><th scope="col">Sức chứa</th><th scope="col">Vật nuôi</th><th scope="col">Thiết bị</th>
                     <th scope="col">Giám sát</th><th scope="col"><span class="visually-hidden">Thao tác</span></th>
                 </tr>
             </thead>
@@ -85,6 +85,7 @@ else
                 <tr>
                     <td class="cell-name">@barn.Name<span class="cell-sub">@barn.Code</span></td>
                     <td class="num" data-label="Sức chứa">@barn.Capacity</td>
+                    <td class="num" data-label="Vật nuôi">@barn.AnimalCount</td>
                     <td class="num" data-label="Thiết bị">@barn.DeviceCount</td>
                     <td data-label="Giám sát">
                         <div class="form-check form-switch m-0">
@@ -94,6 +95,7 @@ else
                     </td>
                     <td class="cell-actions">
                         <div class="row-actions">
+                            <a class="btn btn-ghost" href="animals?barnId=@barn.Id" aria-label="Vật nuôi trong @barn.Name"><Icon Name="animal" Size="14" />Vật nuôi</a>
                             <a class="btn btn-ghost" href="monitor/@barn.Id" aria-label="Xem @barn.Name"><Icon Name="activity" Size="14" />Xem</a>
                             <button class="btn btn-ghost" aria-label="Sửa @barn.Name" @onclick="() => Edit(barn)"><Icon Name="pencil" Size="14" />Sửa</button>
                             <button class="btn btn-ghost danger" aria-label="Xóa @barn.Name" @onclick="() => DeleteAsync(barn)"><Icon Name="trash" Size="14" />Xóa</button>

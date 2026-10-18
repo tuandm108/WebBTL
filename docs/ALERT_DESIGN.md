@@ -36,3 +36,5 @@ The digest dialog is scheduled instead of firing on every event, because interru
 
 ## Read state (built)
 `Alert.ReadAt` is set by `POST /api/alerts/mark-read` (explicit ids, or `all` with the history filters) and cleared when the alert escalates, because that is new information. It is shared by every browser until accounts exist (F08 should add who and when, and an acknowledge step). Read affects only attention aids: the nav badge counts unread alerts and the digest dialog lists unread ones. Changes are pushed to all browsers as the SignalR event `alertsRead`.
+
+The history page also shows the current number and species of animals assigned to each alert's barn, plus `ReadAt` when present. Animal assignment was added after the original alert schema, so old episodes have no animal roster snapshot. The UI labels these figures as current barn data; it does not claim an individual animal caused or experienced the alert.

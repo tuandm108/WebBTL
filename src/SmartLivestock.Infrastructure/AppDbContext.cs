@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<SensorReading> SensorReadings => Set<SensorReading>();
     public DbSet<Alert> Alerts => Set<Alert>();
+    public DbSet<Animal> Animals => Set<Animal>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +34,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.ExternalId).IsUnique();
             e.Property(x => x.ExternalId).HasMaxLength(128);
+        });
+        modelBuilder.Entity<Animal>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.FarmId, x.Tag }).IsUnique();
+            e.HasIndex(x => x.BarnId);
+            e.Property(x => x.Tag).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Species).HasMaxLength(100);
+            e.Property(x => x.IsDemo).HasDefaultValue(false);
+            e.HasOne(x => x.Barn).WithMany(x => x.Animals).HasForeignKey(x => x.BarnId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<Farm>().HasData(new { Id = DemoIds.Farm, Code = "DEMO", Name = "Trang trại mẫu", CreatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero) });
         modelBuilder.Entity<Barn>().HasData(new { Id = DemoIds.Barn, FarmId = DemoIds.Farm, Code = "BARN-01", Name = "Chuồng mẫu", Capacity = 100, Monitored = true });

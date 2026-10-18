@@ -35,6 +35,10 @@
             <div><div class="stat-value num">@online<span class="muted" style="font-size:1rem"> / @result.Items.Count</span></div><div class="stat-label">Trực tuyến (trang này)</div></div>
         </div>
         <div class="card-x stat">
+            <span class="stat-icon"><Icon Name="animal" Size="22" /></span>
+            <div><div class="stat-value num">@result.Items.Sum(x => x.Barn.AnimalCount)</div><div class="stat-label">Vật nuôi (trang này)</div></div>
+        </div>
+        <div class="card-x stat">
             <span class="stat-icon @(attention > 0 ? "bad" : "")"><Icon Name="alert" Size="22" /></span>
             <div><div class="stat-value num">@attention</div><div class="stat-label">Cần chú ý (trang này)</div></div>
         </div>
@@ -69,6 +73,7 @@ else
                 <tr>
                     <th scope="col">Chuồng</th>
                     <th scope="col">Trạng thái</th>
+                    <th scope="col">Vật nuôi</th>
                     @foreach (var metric in BarnStatus.Metrics)
                     {
                         <th scope="col"><span class="th-icon"><Icon Name="@metric" Size="14" />@BarnStatus.Label(metric)</span></th>
@@ -84,6 +89,24 @@ else
                 <tr class="row-@status.Css">
                     <td class="cell-name">@item.Barn.Name<span class="cell-sub">@item.Barn.Code</span></td>
                     <td class="cell-status"><span class="chip chip-@status.Css"><span class="dot"></span>@status.Text</span></td>
+                    <td data-label="Vật nuôi">
+                        <div class="animal-cell">
+                            <a class="animal-cell-count" href="animals?barnId=@item.Barn.Id">@item.Barn.AnimalCount/@item.Barn.Capacity con</a>
+                            @if (item.Species.Count == 0)
+                            {
+                                <span class="animal-cell-empty">Chưa gắn con vật</span>
+                            }
+                            else
+                            {
+                                <span class="species-tags animal-cell-tags" aria-label="Cơ cấu loài vật nuôi">
+                                    @foreach (var species in item.Species)
+                                    {
+                                        <SpeciesTag Code="@species.Code" Count="@species.Count" />
+                                    }
+                                </span>
+                            }
+                        </div>
+                    </td>
                     @foreach (var metric in BarnStatus.Metrics)
                     {
                         <td class="num" data-label="@BarnStatus.Label(metric)">@Cell(item.Barn.Id, metric)</td>
@@ -138,6 +161,11 @@ else
             hub.On<ReadingDto>("telemetryUpdated", dto => _ = InvokeAsync(() =>
             {
                 latest[(dto.BarnId, dto.Metric)] = dto;
+                StateHasChanged();
+            }));
+            hub.On<Guid>("animalChanged", barnId => _ = InvokeAsync(async () =>
+            {
+                await Run(() => LoadAsync(page));
                 StateHasChanged();
             }));
             hub.Reconnected += async _ =>

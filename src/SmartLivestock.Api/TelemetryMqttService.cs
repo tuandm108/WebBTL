@@ -16,6 +16,7 @@ public sealed class TelemetryMqttService(
     IConfiguration configuration,
     IServiceScopeFactory scopeFactory,
     IHubContext<MonitoringHub> hub,
+    MqttConnectionStatus connectionStatus,
     ILogger<TelemetryMqttService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -32,22 +33,37 @@ public sealed class TelemetryMqttService(
 
         var factory = new MqttClientFactory();
         using var client = factory.CreateMqttClient();
+        client.DisconnectedAsync += _ =>
+        {
+            connectionStatus.IsConnected = false;
+            return Task.CompletedTask;
+        };
         client.ApplicationMessageReceivedAsync += async args =>
         {
             args.AutoAcknowledge = false;
-            try
+            var attempt = 0;
+            while (!stoppingToken.IsCancellationRequested && client.IsConnected)
             {
-                await ProcessMessageAsync(args.ApplicationMessage.Topic,
-                    args.ApplicationMessage.Payload.ToArray(), stoppingToken);
-                await args.AcknowledgeAsync(stoppingToken);
-            }
-            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
-            {
-                logger.LogError(ex, "Telemetry processing failed; reconnect will retry pending QoS 1 message");
+                try
+                {
+                    await ProcessMessageAsync(args.ApplicationMessage.Topic,
+                        args.ApplicationMessage.Payload.ToArray(), stoppingToken);
+                    await args.AcknowledgeAsync(stoppingToken);
+                    return;
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+                catch (Exception ex)
+                {
+                    attempt = Math.Min(attempt + 1, 15);
+                    logger.LogError(ex, "Telemetry processing failed; retrying unacknowledged message");
+                    try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(attempt * 2, 30)), stoppingToken); }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+                }
             }
         };
         var options = new MqttClientOptionsBuilder().WithTcpServer(host, port)
-            .WithCredentials(user, password).WithClientId("smartlivestock-api").Build();
+            .WithCredentials(user, password).WithClientId("smartlivestock-api")
+            .WithCleanSession(false).Build();
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -59,6 +75,7 @@ public sealed class TelemetryMqttService(
                         .WithTopicFilter(f => f.WithTopic("smartlivestock/v1/+/+/+/telemetry")
                             .WithAtLeastOnceQoS()).Build();
                     await client.SubscribeAsync(subscription, stoppingToken);
+                    connectionStatus.IsConnected = true;
                     logger.LogInformation("MQTT telemetry subscription active");
                 }
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
@@ -66,6 +83,7 @@ public sealed class TelemetryMqttService(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception ex)
             {
+                connectionStatus.IsConnected = false;
                 logger.LogWarning(ex, "MQTT disconnected; retrying");
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }

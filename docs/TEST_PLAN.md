@@ -7,6 +7,7 @@ P0 acceptance:
 4. A simulator reading travels through MQTT, backend, SQL Server, SignalR and Blazor; measuredAt, receivedAt and quality remain intact.
 5. Duplicate and stale messages do not create duplicate readings or trigger control.
 6. API readiness fails when required dependencies fail; liveness remains available.
+7. Individual animals can be registered and moved between barns; duplicate tags and capacity overflow are rejected, and a barn with animals cannot be deleted.
 
 Further tests:
 - Identity login, roles and backend command authorization.

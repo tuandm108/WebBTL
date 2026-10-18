@@ -1,0 +1,342 @@
+@page "/animals"
+@using System.ComponentModel.DataAnnotations
+@using SmartLivestock.Contracts
+@inject IHttpClientFactory ClientFactory
+@inject IJSRuntime JS
+
+<PageTitle>Quản lý vật nuôi | Smart Livestock</PageTitle>
+
+<header class="page-head">
+    <div>
+        <h1>Quản lý vật nuôi</h1>
+        <p>Ghi nhận từng con và chuồng hiện tại. Chọn chuồng khác để chuyển con vật.</p>
+    </div>
+</header>
+
+@if (message is not null)
+{
+    <div class="alert @(isError ? "alert-warning" : "alert-success")" role="status">@message</div>
+}
+
+<section class="card-x pad mb-4" aria-label="Biểu mẫu vật nuôi">
+    <h2 class="card-title">Thêm vật nuôi</h2>
+    <EditForm Model="addForm" OnValidSubmit="AddAsync" FormName="animal-add-form">
+        <DataAnnotationsValidator />
+        <div class="form-bar">
+            <div class="float-field">
+                <label class="field-label" for="animal-tag">Mã tai / mã con*</label>
+                <InputText id="animal-tag" class="form-control" @bind-Value="addForm.Tag" placeholder="CON-001" />
+            </div>
+            <div class="float-field">
+                <label class="field-label" for="animal-name">Tên con (nếu có)</label>
+                <InputText id="animal-name" class="form-control" @bind-Value="addForm.Name" placeholder="Không bắt buộc" />
+            </div>
+            <div class="float-field">
+                <label class="field-label" for="animal-species">Loài*</label>
+                <InputSelect id="animal-species" class="form-select" @bind-Value="addForm.Species">
+                    <option value="">Chọn loài vật nuôi</option>
+                    @foreach (var species in speciesOptions)
+                    {
+                        <option value="@species.Code">@species.Name</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="float-field">
+                <label class="field-label" for="animal-barn">Chuồng*</label>
+                <InputSelect id="animal-barn" class="form-select" @bind-Value="addForm.BarnId">
+                    <option value="">Chọn chuồng</option>
+                    @foreach (var barn in barns)
+                    {
+                        <option value="@barn.Id">@barn.Code — @barn.Name (@barn.AnimalCount/@barn.Capacity)</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit"><Icon Name="plus" Size="16" />Thêm con</button>
+            </div>
+        </div>
+        <ValidationSummary class="mt-2" />
+    </EditForm>
+</section>
+
+<dialog @ref="editDialog" class="alert-dialog animal-dialog" aria-modal="true"
+        aria-labelledby="animal-edit-title" aria-describedby="animal-edit-desc" @onclose="OnEditClosed">
+    @if (editingAnimal is { } currentAnimal)
+    {
+        <header class="animal-dialog-head">
+            <span class="animal-dialog-icon"><Icon Name="animal" Size="22" /></span>
+            <div>
+                <h2 id="animal-edit-title">Chỉnh sửa chi tiết con vật</h2>
+                <p id="animal-edit-desc">@currentAnimal.Tag · @LivestockSpecies.NameOf(currentAnimal.Species) · @currentAnimal.BarnCode</p>
+            </div>
+            <button class="btn btn-ghost animal-dialog-close" type="button" aria-label="Đóng" @onclick="CloseEditAsync">×</button>
+        </header>
+        <EditForm Model="editForm" OnValidSubmit="SaveEditAsync" FormName="animal-edit-form">
+            <DataAnnotationsValidator />
+            <div class="animal-dialog-body">
+                <div class="animal-dialog-meta">
+                    <span>Ngày thêm: @currentAnimal.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy")</span>
+                    @if (currentAnimal.IsDemo) { <span>Dữ liệu mẫu</span> }
+                </div>
+                @if (editError is not null)
+                {
+                    <div class="alert alert-warning" role="alert">@editError</div>
+                }
+                <div class="animal-dialog-fields">
+                    <div>
+                        <label class="field-label" for="edit-animal-tag">Mã tai / mã con*</label>
+                        <InputText id="edit-animal-tag" class="form-control" @bind-Value="editForm.Tag" autofocus />
+                    </div>
+                    <div>
+                        <label class="field-label" for="edit-animal-name">Tên con (nếu có)</label>
+                        <InputText id="edit-animal-name" class="form-control" @bind-Value="editForm.Name" />
+                    </div>
+                    <div>
+                        <label class="field-label" for="edit-animal-species">Loài*</label>
+                        <InputSelect id="edit-animal-species" class="form-select" @bind-Value="editForm.Species">
+                            <option value="">Chọn loài vật nuôi</option>
+                            @if (!string.IsNullOrWhiteSpace(editForm.Species) && LivestockSpecies.Normalize(editForm.Species) is null)
+                            {
+                                <option value="@editForm.Species">@editForm.Species (dữ liệu cũ)</option>
+                            }
+                            @foreach (var species in speciesOptions)
+                            {
+                                <option value="@species.Code">@species.Name</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div>
+                        <label class="field-label" for="edit-animal-barn">Chuồng hiện tại*</label>
+                        <InputSelect id="edit-animal-barn" class="form-select" @bind-Value="editForm.BarnId">
+                            <option value="">Chọn chuồng</option>
+                            @foreach (var barn in barns)
+                            {
+                                <option value="@barn.Id">@barn.Code — @barn.Name (@barn.AnimalCount/@barn.Capacity)</option>
+                            }
+                        </InputSelect>
+                    </div>
+                </div>
+                <p class="muted animal-dialog-note">Chọn chuồng khác để chuyển con vật; hệ thống sẽ kiểm tra sức chứa trước khi lưu.</p>
+                <ValidationSummary class="mt-2 mb-0" />
+            </div>
+            <footer class="ad-foot">
+                <button class="btn btn-ghost" type="button" @onclick="CloseEditAsync">Hủy</button>
+                <button class="btn btn-primary" type="submit" disabled="@savingEdit"><Icon Name="check" Size="16" />@(savingEdit ? "Đang lưu..." : "Lưu thay đổi")</button>
+            </footer>
+        </EditForm>
+    }
+</dialog>
+
+<section class="card-x" aria-label="Danh sách vật nuôi">
+    <div class="p-3 d-flex align-items-center gap-3 flex-wrap">
+        <label for="filter-barn">Lọc theo chuồng</label>
+        <select id="filter-barn" class="form-select" style="max-width:260px" @bind="filterBarnId">
+            <option value="">Tất cả chuồng</option>
+            @foreach (var barn in barns)
+            {
+                <option value="@barn.Id">@barn.Code — @barn.Name</option>
+            }
+        </select>
+        <span class="num">@FilteredAnimals.Count() / @animals.Count con</span>
+    </div>
+    @if (loading)
+    {
+        <div class="p-4" aria-busy="true">Đang tải danh sách...</div>
+    }
+    else if (!FilteredAnimals.Any())
+    {
+        <div class="empty" role="status">
+            <Icon Name="animal" Size="40" />
+            <h2>Chưa có vật nuôi trong danh sách này</h2>
+            <p>Dùng biểu mẫu phía trên để gắn từng con vào chuồng.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="table table-hover stack-table fit-rows">
+                <thead>
+                    <tr>
+                        <th scope="col">Mã con</th><th scope="col">Tên</th><th scope="col">Loài</th>
+                        <th scope="col">Chuồng hiện tại</th><th scope="col">Ngày thêm</th>
+                        <th scope="col"><span class="visually-hidden">Thao tác</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var animal in FilteredAnimals)
+                {
+                    <tr>
+                        <td class="cell-name">@animal.Tag@if (animal.IsDemo) { <span class="cell-sub">Dữ liệu mẫu</span> }</td>
+                        <td data-label="Tên">@(string.IsNullOrWhiteSpace(animal.Name) ? "—" : animal.Name)</td>
+                        <td data-label="Loài"><SpeciesTag Code="@animal.Species" /></td>
+                        <td data-label="Chuồng">@animal.BarnCode</td>
+                        <td data-label="Ngày thêm">@animal.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                        <td class="cell-actions">
+                            <div class="row-actions">
+                                <button class="btn btn-ghost" @onclick="() => Edit(animal)"><Icon Name="pencil" Size="14" />Chi tiết / sửa</button>
+                                <button class="btn btn-ghost danger" @onclick="() => DeleteAsync(animal)"><Icon Name="trash" Size="14" />Xóa</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private sealed class AnimalForm
+    {
+        [Required, StringLength(64)] public string Tag { get; set; } = "";
+        [StringLength(200)] public string Name { get; set; } = "";
+        [Required, StringLength(100)] public string Species { get; set; } = "";
+        [Required] public Guid? BarnId { get; set; }
+    }
+
+    [SupplyParameterFromQuery(Name = "barnId")] public Guid? BarnId { get; set; }
+
+    private List<AnimalDto> animals = [];
+    private List<BarnDto> barns = [];
+    private List<SpeciesOption> speciesOptions = [];
+    private AnimalForm addForm = new();
+    private AnimalForm editForm = new();
+    private AnimalDto? editingAnimal;
+    private ElementReference editDialog;
+    private bool openEditRequested;
+    private bool savingEdit;
+    private string? editError;
+    private string filterBarnId = "";
+    private string? message;
+    private bool isError;
+    private bool loading = true;
+    private HttpClient Api => ClientFactory.CreateClient("api");
+    private IEnumerable<AnimalDto> FilteredAnimals => string.IsNullOrEmpty(filterBarnId)
+        ? animals : animals.Where(x => x.BarnId.ToString("D") == filterBarnId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        filterBarnId = BarnId?.ToString("D") ?? "";
+        await LoadAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (BarnId.HasValue) filterBarnId = BarnId.Value.ToString("D");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!openEditRequested) return;
+        openEditRequested = false;
+        await JS.InvokeVoidAsync("slDialog.show", editDialog);
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            barns = await Api.GetFromJsonAsync<List<BarnDto>>("api/barns") ?? [];
+            animals = await Api.GetFromJsonAsync<List<AnimalDto>>("api/animals") ?? [];
+            speciesOptions = await Api.GetFromJsonAsync<List<SpeciesOption>>("api/species") ?? [];
+            message = null;
+            loading = false;
+        }
+        catch (Exception ex)
+        {
+            message = $"Không thể tải dữ liệu: {ex.Message}";
+            isError = true;
+            loading = false;
+        }
+    }
+
+    private void Edit(AnimalDto animal)
+    {
+        editingAnimal = animal;
+        editForm = new AnimalForm { Tag = animal.Tag, Name = animal.Name,
+            Species = LivestockSpecies.Normalize(animal.Species) ?? animal.Species, BarnId = animal.BarnId };
+        editError = null;
+        message = null;
+        openEditRequested = true;
+    }
+
+    private async Task CloseEditAsync() => await JS.InvokeVoidAsync("slDialog.close", editDialog);
+
+    private void OnEditClosed()
+    {
+        editingAnimal = null;
+        editForm = new();
+        editError = null;
+    }
+
+    private async Task AddAsync()
+    {
+        try
+        {
+            var input = new AnimalInput(addForm.Tag, addForm.Name, addForm.Species, addForm.BarnId!.Value);
+            using var response = await Api.PostAsJsonAsync("api/animals", input);
+            if (!await ReportAsync(response)) return;
+            addForm = new();
+            await LoadAsync();
+            message = "Đã thêm vật nuôi vào chuồng.";
+            isError = false;
+        }
+        catch (Exception ex) { message = $"Không thể thêm: {ex.Message}"; isError = true; }
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (editingAnimal is not { } animal || savingEdit) return;
+        savingEdit = true;
+        editError = null;
+        try
+        {
+            var input = new AnimalInput(editForm.Tag, editForm.Name, editForm.Species, editForm.BarnId!.Value);
+            using var response = await Api.PutAsJsonAsync($"api/animals/{animal.Id:D}", input);
+            if (!response.IsSuccessStatusCode)
+            {
+                editError = await ErrorOfAsync(response);
+                return;
+            }
+            await CloseEditAsync();
+            await LoadAsync();
+            message = $"Đã cập nhật {input.Tag}.";
+            isError = false;
+        }
+        catch (Exception ex) { editError = $"Không thể lưu: {ex.Message}"; }
+        finally { savingEdit = false; }
+    }
+
+    private async Task DeleteAsync(AnimalDto animal)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Xóa vật nuôi {animal.Tag}?")) return;
+        try
+        {
+            using var response = await Api.DeleteAsync($"api/animals/{animal.Id:D}");
+            if (!await ReportAsync(response)) return;
+            await LoadAsync();
+            message = $"Đã xóa {animal.Tag}.";
+            isError = false;
+        }
+        catch (Exception ex) { message = $"Không thể xóa: {ex.Message}"; isError = true; }
+    }
+
+    private async Task<bool> ReportAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode) return true;
+        message = await ErrorOfAsync(response);
+        isError = true;
+        return false;
+    }
+
+    private static async Task<string> ErrorOfAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            if ((await response.Content.ReadFromJsonAsync<Dictionary<string, string>>())?.GetValueOrDefault("error") is { } error)
+                return error;
+        }
+        catch (Exception) { }
+        return $"Lỗi {(int)response.StatusCode}";
+    }
+}

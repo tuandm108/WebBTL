@@ -7,7 +7,7 @@ flowchart LR
   Ingest --> App[Application services]
   App --> DB[(SQL Server)]
   App --> Hub[SignalR hub]
-  Web[Blazor Interactive Server] -->|authenticated REST| API[ASP.NET Core API]
+  Web[Blazor Interactive Server] -->|REST, auth planned| API[ASP.NET Core API]
   API --> App
   Hub --> Web
   API -->|MQTT command/config| Broker

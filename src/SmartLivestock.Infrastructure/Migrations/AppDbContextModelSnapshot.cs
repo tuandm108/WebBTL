@@ -86,6 +86,51 @@ namespace SmartLivestock.Infrastructure.Migrations
                     b.ToTable("Alerts");
                 });
 
+            modelBuilder.Entity("SmartLivestock.Domain.Animal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BarnId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FarmId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDemo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset>("RegisteredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Species")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BarnId");
+
+                    b.HasIndex("FarmId", "Tag")
+                        .IsUnique();
+
+                    b.ToTable("Animals");
+                });
+
             modelBuilder.Entity("SmartLivestock.Domain.Barn", b =>
                 {
                     b.Property<Guid>("Id")
@@ -557,6 +602,17 @@ namespace SmartLivestock.Infrastructure.Migrations
                     b.Navigation("Barn");
                 });
 
+            modelBuilder.Entity("SmartLivestock.Domain.Animal", b =>
+                {
+                    b.HasOne("SmartLivestock.Domain.Barn", "Barn")
+                        .WithMany("Animals")
+                        .HasForeignKey("BarnId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Barn");
+                });
+
             modelBuilder.Entity("SmartLivestock.Domain.Barn", b =>
                 {
                     b.HasOne("SmartLivestock.Domain.Farm", "Farm")
@@ -592,6 +648,8 @@ namespace SmartLivestock.Infrastructure.Migrations
 
             modelBuilder.Entity("SmartLivestock.Domain.Barn", b =>
                 {
+                    b.Navigation("Animals");
+
                     b.Navigation("Devices");
                 });
 

@@ -14,7 +14,7 @@
         <h1>@(barn?.Name ?? "Chi tiết chuồng")</h1>
         @if (barn is not null)
         {
-            <p>@barn.Code · sức chứa @barn.Capacity · @barn.DeviceCount thiết bị</p>
+            <p>@barn.Code · @animals.Count/@barn.Capacity con · @barn.DeviceCount thiết bị · <a href="animals?barnId=@barn.Id">Quản lý vật nuôi</a></p>
         }
     </div>
     <div class="d-flex align-items-center gap-3">
@@ -67,8 +67,47 @@ else
     </section>
 }
 
+@if (barn is not null)
+{
+    <section class="card-x pad mb-4" aria-label="Vật nuôi trong chuồng">
+        <h2 class="card-title">Vật nuôi trong chuồng (@animals.Count/@barn.Capacity)</h2>
+        <p class="muted">Chỉ số và cảnh báo môi trường áp dụng cho cả chuồng; chưa có cảm biến hay đánh giá sức khỏe riêng cho từng con.</p>
+        @if (animals.Count == 0)
+        {
+            <p class="muted mb-0">Chưa gắn con vật nào vào chuồng.</p>
+        }
+        else
+        {
+            <div class="species-tags mb-3" aria-label="Cơ cấu loài vật nuôi">
+                @foreach (var species in speciesSummary)
+                {
+                    <SpeciesTag Code="@species.Code" Count="@species.Count" />
+                }
+            </div>
+            <div class="d-flex flex-wrap gap-2" aria-label="Các con vật trong chuồng">
+                @foreach (var animal in animals.Take(20))
+                {
+                    <span class="animal-entry" title="@(animal.IsDemo ? "Dữ liệu mẫu" : "Dữ liệu người dùng")">
+                        <span class="chip chip-animal">@animal.Tag@(animal.IsDemo ? " · mẫu" : "")</span>
+                        <SpeciesTag Code="@animal.Species" />
+                    </span>
+                }
+            </div>
+            @if (animals.Count > 20)
+            {
+                <a href="animals?barnId=@BarnId" class="d-inline-block mt-2">Xem tất cả @animals.Count con</a>
+            }
+        }
+    </section>
+}
+
 @code {
     private readonly List<ReadingDto> readings = [];
+    private List<AnimalDto> animals = [];
+    private IEnumerable<SpeciesCountDto> speciesSummary => animals
+        .GroupBy(x => LivestockSpecies.Normalize(x.Species) ?? x.Species)
+        .Select(x => new SpeciesCountDto(x.Key, LivestockSpecies.NameOf(x.Key), x.Count()))
+        .OrderByDescending(x => x.Count).ThenBy(x => x.Name);
     private HubConnection? hub;
     private System.Threading.Timer? ticker;
     [Parameter] public Guid BarnId { get; set; }
@@ -88,6 +127,7 @@ else
         {
             var client = ClientFactory.CreateClient("api");
             barn = await client.GetFromJsonAsync<BarnDto>($"api/barns/{BarnId:D}");
+            animals = await client.GetFromJsonAsync<List<AnimalDto>>($"api/animals?barnId={BarnId:D}") ?? [];
             var latest = await client.GetFromJsonAsync<List<ReadingDto>>(
                 $"api/barns/{BarnId:D}/environment/latest");
             if (latest is not null) readings.AddRange(latest);
@@ -99,6 +139,14 @@ else
             {
                 readings.RemoveAll(x => x.Metric == dto.Metric);
                 readings.Add(dto);
+                StateHasChanged();
+            }));
+            hub.On<Guid>("animalChanged", changedBarnId => _ = InvokeAsync(async () =>
+            {
+                if (changedBarnId != BarnId) return;
+                var refreshed = ClientFactory.CreateClient("api");
+                barn = await refreshed.GetFromJsonAsync<BarnDto>($"api/barns/{BarnId:D}");
+                animals = await refreshed.GetFromJsonAsync<List<AnimalDto>>($"api/animals?barnId={BarnId:D}") ?? [];
                 StateHasChanged();
             }));
             hub.Reconnected += async _ =>

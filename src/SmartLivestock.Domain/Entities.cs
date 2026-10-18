@@ -19,6 +19,20 @@ public sealed class Barn
     public bool Monitored { get; set; }
     public Farm Farm { get; set; } = null!;
     public List<Device> Devices { get; set; } = [];
+    public List<Animal> Animals { get; set; } = [];
+}
+
+public sealed class Animal
+{
+    public Guid Id { get; set; }
+    public Guid FarmId { get; set; }
+    public Guid BarnId { get; set; }
+    public required string Tag { get; set; }
+    public required string Name { get; set; }
+    public required string Species { get; set; }
+    public bool IsDemo { get; set; }
+    public DateTimeOffset RegisteredAt { get; set; }
+    public Barn Barn { get; set; } = null!;
 }
 
 public sealed class Device

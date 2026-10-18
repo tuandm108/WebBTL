@@ -32,7 +32,21 @@ public static class AlertEndpoints
                 .Select(a => new AlertDto(a.Id, a.BarnId, a.Barn.Code, a.Barn.Name, a.Type, a.Metric, a.Severity,
                     a.State, a.FirstSeenAt, a.LastSeenAt, a.ClearedAt, a.PeakValue, a.Unit, a.ReadAt))
                 .ToListAsync(ct);
-            return Results.Ok(new PagedResult<AlertDto>(current, size, total, items));
+            var barnIds = items.Select(a => a.BarnId).Distinct().ToList();
+            var animalGroups = await db.Animals.AsNoTracking().Where(a => barnIds.Contains(a.BarnId))
+                .GroupBy(a => new { a.BarnId, a.Species })
+                .Select(g => new { g.Key.BarnId, g.Key.Species, Count = g.Count() })
+                .ToListAsync(ct);
+            var currentAnimals = animalGroups.GroupBy(g => g.BarnId).ToDictionary(g => g.Key,
+                g => g.GroupBy(x => LivestockSpecies.Normalize(x.Species) ?? x.Species)
+                    .Select(x => new SpeciesCountDto(x.Key, LivestockSpecies.NameOf(x.Key), x.Sum(y => y.Count)))
+                    .OrderByDescending(x => x.Count).ThenBy(x => x.Name).ToList());
+            var history = items.Select(a =>
+            {
+                var species = currentAnimals.GetValueOrDefault(a.BarnId) ?? [];
+                return a with { CurrentAnimalCount = species.Sum(x => x.Count), CurrentSpecies = species };
+            }).ToList();
+            return Results.Ok(new PagedResult<AlertDto>(current, size, total, history));
         });
 
         // Open alerts by severity, plus how many alerts (any state) are still unread.

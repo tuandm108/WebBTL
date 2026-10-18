@@ -1,6 +1,6 @@
 # Project plan and backlog
 
-Scope: simulator-first research MVP for one farm, barn, batch and Edge controller; model supports many. Species and operating thresholds are configurable and remain unset until reviewed. No machine learning in MVP.
+Scope: simulator-first research MVP for one demo farm, multiple barns and individual animals; each barn has an Edge simulator device. Species can be recorded per animal. Operating thresholds remain demo values until reviewed. No machine learning in MVP.
 
 | ID | Priority | Task | Depends on | Acceptance |
 |---|---|---|---|---|
@@ -20,5 +20,6 @@ Scope: simulator-first research MVP for one farm, barn, batch and Edge controlle
 | F14 | P1 | CSV reports | F06,F11,F12,F13 | bounded, filtered exports |
 | F15 | P2 | PDF/external notifications | F14 | approved requirements |
 | F16 | P2 | real hardware integration | F09 | engineering safety review and physical tests |
+| F17 | P1 | individual animal registry and barn assignment | F03,F10 | unique animal tag, current barn, capacity check and move between barns |
 
-Delivery sequence: foundation → simulator/telemetry vertical slice → authorization/control → feeding/water → anomalies/alerts → reports → optional hardware. Sprint dates are planning estimates, not evidence of completion.
+Delivery sequence: foundation → simulator/telemetry vertical slice → barn and animal registry → authorization/control → feeding/water → anomalies/alerts → reports → optional hardware. Sprint dates are planning estimates, not evidence of completion.

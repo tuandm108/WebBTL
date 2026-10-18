@@ -11,7 +11,7 @@
 <header class="page-head">
     <div>
         <h1>Lịch sử lỗi</h1>
-        <p>Các đợt cảnh báo, nguy hiểm và lỗi cảm biến của từng chuồng, cập nhật theo thời gian thực.</p>
+        <p>Các đợt cảnh báo, nguy hiểm và lỗi cảm biến của từng chuồng, cập nhật theo thời gian thực. Số con và loài bên dưới là dữ liệu hiện tại của chuồng, không phải tại lúc cảnh báo.</p>
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
         @if (Feed.UnreadCount > 0) { <span class="chip chip-warn" role="status">@Feed.UnreadCount chưa đọc</span> }
@@ -98,7 +98,7 @@ else
         <table class="table table-hover stack-table fit-rows fit-alerts">
             <thead>
                 <tr>
-                    <th scope="col">Bắt đầu</th><th scope="col">Mức độ</th><th scope="col">Chuồng</th>
+                    <th scope="col">Bắt đầu</th><th scope="col">Mức độ</th><th scope="col">Chuồng</th><th scope="col">Vật nuôi hiện tại</th>
                     <th scope="col">Nội dung</th><th scope="col">Đỉnh</th><th scope="col">Trạng thái</th><th scope="col"><span class="visually-hidden">Đọc</span></th>
                 </tr>
             </thead>
@@ -109,6 +109,24 @@ else
                     <td class="cell-name num">@if (a.ReadAt is null) { <span class="unread-dot" role="img" aria-label="Chưa đọc" title="Chưa đọc"></span> }@a.FirstSeenAt.ToLocalTime().ToString("HH:mm:ss dd/MM")<span class="cell-sub">Kéo dài @Duration(a)</span></td>
                     <td class="cell-status">@Chip(a.Severity)</td>
                     <td class="cell-barn" data-label="Chuồng"><a href="monitor/@a.BarnId">@a.BarnName</a><span class="cell-sub">@a.BarnCode</span></td>
+                    <td data-label="Vật nuôi hiện tại">
+                        @if (a.CurrentAnimalCount is { } animalCount)
+                        {
+                            <div class="alert-animals">
+                                <a href="animals?barnId=@a.BarnId">@animalCount con</a>
+                                @if (a.CurrentSpecies is { Count: > 0 })
+                                {
+                                    <span class="species-tags alert-species-tags" aria-label="Loài vật nuôi hiện tại">
+                                        @foreach (var species in a.CurrentSpecies)
+                                        {
+                                            <SpeciesTag Code="@species.Code" Count="@species.Count" />
+                                        }
+                                    </span>
+                                }
+                            </div>
+                        }
+                        else { <span class="muted">Chưa có dữ liệu</span> }
+                    </td>
                     <td data-label="Nội dung">@Describe(a)</td>
                     <td class="num" data-label="Đỉnh">@(a.PeakValue is { } v ? $"{v:0.##} {a.Unit}" : "–")</td>
                     <td data-label="Trạng thái">
@@ -122,9 +140,15 @@ else
                         }
                     </td>
                     <td class="cell-actions">
-                        <button type="button" class="btn btn-ghost" disabled="@busy" aria-label="@(a.ReadAt is null ? "Đánh dấu đã đọc" : "Đánh dấu chưa đọc") cảnh báo @a.BarnName" @onclick="() => ToggleReadAsync(a)">
-                            @if (a.ReadAt is null) { <Icon Name="check" Size="14" /><text>Đã đọc</text> } else { <text>Bỏ đã đọc</text> }
-                        </button>
+                        <div class="alert-read-actions">
+                            <button type="button" class="btn btn-ghost" disabled="@busy" aria-label="@(a.ReadAt is null ? "Đánh dấu đã đọc" : "Đánh dấu chưa đọc") cảnh báo @a.BarnName" @onclick="() => ToggleReadAsync(a)">
+                                @if (a.ReadAt is null) { <Icon Name="check" Size="14" /><text>Đã đọc</text> } else { <text>Bỏ đã đọc</text> }
+                            </button>
+                            @if (a.ReadAt is { } readAt)
+                            {
+                                <span class="muted num">Đọc lúc @readAt.ToLocalTime().ToString("HH:mm dd/MM")</span>
+                            }
+                        </div>
                     </td>
                 </tr>
             }
