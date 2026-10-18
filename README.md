@@ -27,6 +27,8 @@ Broker của dự án chỉ lắng nghe tại `127.0.0.1:1884`. Dịch vụ Mosq
    & 'C:\Program Files\mosquitto\mosquitto.exe' -c '.\deploy\native\mosquitto.conf' -v
    ```
 
+   Kiểm tra `Test-NetConnection 127.0.0.1 -Port 1884`: kết quả cần có `TcpTestSucceeded : True`. Mosquitto chạy ở cổng 1883 không nhận dữ liệu của dự án.
+
 3. Mở một terminal khác trong Visual Studio. **Chỉ cần làm lần đầu** hoặc khi có migration mới:
 
    ```powershell
@@ -88,7 +90,7 @@ dotnet run --project simulators/SmartLivestock.IoTSimulator
 dotnet run --project src/SmartLivestock.Web --launch-profile http
 ```
 
-Simulator hỗ trợ biến `SCENARIO`: `NORMAL`, `HIGH_TEMPERATURE`, `HIGH_HUMIDITY`, `HIGH_AMMONIA`, `HIGH_H2S`, `SENSOR_FAILURE`.
+Simulator hỗ trợ biến `SCENARIO`: `NORMAL`, `HIGH_TEMPERATURE`, `HIGH_HUMIDITY`, `HIGH_AMMONIA`, `HIGH_H2S`, `SENSOR_FAILURE`, `DEMO_ALERTS`.
 
 Đây là bản mẫu nghiên cứu; các phần đăng nhập, liên động điều khiển và một số chức năng trong yêu cầu tổng thể vẫn đang được phát triển. Khi triển khai thực tế cần cấu hình SQL Server, TLS, tài khoản riêng cho thiết bị và kiểm định an toàn vận hành.
 
