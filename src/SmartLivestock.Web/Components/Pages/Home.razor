@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @implements IAsyncDisposable
 @inject IHttpClientFactory ClientFactory
+@inject SmartLivestock.Web.Services.ApiSecret ApiSecret
 @inject IConfiguration Config
 @inject Services.PageSizeStore SizeStore
 
@@ -155,7 +156,8 @@ else
         try
         {
             hub = new HubConnectionBuilder()
-                .WithUrl($"{apiBase.TrimEnd('/')}/hubs/monitoring")
+                .WithUrl($"{apiBase.TrimEnd('/')}/hubs/monitoring", options =>
+                    options.Headers.Add("X-SmartLivestock-Api-Key", ApiSecret.Value))
                 .WithAutomaticReconnect()
                 .Build();
             hub.On<ReadingDto>("telemetryUpdated", dto => _ = InvokeAsync(() =>

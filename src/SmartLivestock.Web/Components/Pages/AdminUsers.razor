@@ -1,0 +1,443 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = "Admin")]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using SmartLivestock.Infrastructure
+@inject UserManager<AppUser> Users
+@inject SignInManager<AppUser> SignIn
+@inject NavigationManager Navigation
+
+<PageTitle>Quản lý tài khoản | Smart Livestock</PageTitle>
+<div class="accounts-page">
+    <header class="page-head">
+        <div>
+            <h1>Quản lý tài khoản</h1>
+            <p>Xem tài khoản, duyệt đăng ký, khóa hoặc xóa tài khoản và quản lý mật khẩu.</p>
+        </div>
+    </header>
+
+    @if (message is not null)
+    {
+        <div class="alert @(isError ? "alert-warning" : "alert-success")" role="status">@message</div>
+    }
+
+    <section class="card-x mb-4" aria-label="Danh sách tài khoản">
+        <div class="account-list-head">
+            <h2 class="card-title m-0">Tài khoản (@total)</h2>
+            @if (pendingCount > 0)
+            {
+                <span class="badge text-bg-warning">@pendingCount chờ duyệt</span>
+            }
+        </div>
+        <form class="account-search" @onsubmit="ApplySearch" @onsubmit:preventDefault>
+            <label for="account-search-input" class="visually-hidden">Tìm tài khoản theo email</label>
+            <input id="account-search-input" class="form-control" type="search" placeholder="Tìm theo email tài khoản"
+                   maxlength="256" autocomplete="off" @bind="searchInput" @bind:event="oninput" />
+            <button type="submit" class="btn btn-primary" disabled="@busy">Tìm kiếm</button>
+            <button type="button" class="btn btn-ghost" disabled="@(busy || (searchTerm.Length == 0 && string.IsNullOrWhiteSpace(searchInput)))"
+                    @onclick="ClearSearch">Xóa lọc</button>
+        </form>
+        @if (accounts.Count == 0)
+        {
+            <p class="p-4 mb-0">@(searchTerm.Length == 0 ? "Chưa có tài khoản." : "Không tìm thấy tài khoản có email phù hợp.")</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table table-hover stack-table account-table">
+                    <thead><tr><th>Email</th><th>Vai trò</th><th>Trạng thái</th><th>Đăng ký</th><th>Thao tác</th></tr></thead>
+                    <tbody>
+                        @foreach (var account in accounts)
+                        {
+                            <tr>
+                                <td class="cell-name" data-label="Email">@account.Email</td>
+                                <td data-label="Vai trò">@(account.IsAdmin ? "Admin" : "Người dùng")</td>
+                                <td data-label="Trạng thái">
+                                    @if (account.DisabledAt is not null)
+                                    {
+                                        <span class="badge text-bg-danger">Đã khóa</span>
+                                    }
+                                    else if (account.ApprovedAt is null)
+                                    {
+                                        <span class="badge text-bg-warning">Chờ duyệt</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-success">Đã duyệt</span>
+                                    }
+                                </td>
+                                <td data-label="Đăng ký">@account.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td class="cell-actions" data-label="Thao tác">
+                                    <div class="account-actions">
+                                        @if (account.ApprovedAt is null && account.DisabledAt is null && !account.IsAdmin)
+                                        {
+                                            <button type="button" class="btn btn-primary btn-sm" disabled="@busy"
+                                                    @onclick="() => Approve(account.Id)">Chấp thuận</button>
+                                        }
+                                        @if (!account.IsAdmin)
+                                        {
+                                            <button type="button" class="btn btn-outline-warning btn-sm" disabled="@busy"
+                                                    @onclick="() => SetDisabled(account.Id, account.DisabledAt is null)">@(account.DisabledAt is null ? "Khóa" : "Mở khóa")</button>
+                                            <button type="button" class="btn btn-outline-danger btn-sm" disabled="@busy"
+                                                    @onclick="() => SelectDeleteTarget(account)">@(account.ApprovedAt is null ? "Từ chối / Xóa" : "Xóa")</button>
+                                        }
+                                        <button type="button" class="btn btn-ghost btn-sm" disabled="@busy"
+                                                @onclick="() => SelectPasswordTarget(account)">
+                                            @(account.Id == currentAdminId ? "Đổi mật khẩu" : "Cấp lại mật khẩu")
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="account-pagination">
+                <span>Trang @(page) / @PageCount</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(page <= 1 || busy)" @onclick="() => ChangePage(page - 1)">Trước</button>
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(page >= PageCount || busy)" @onclick="() => ChangePage(page + 1)">Sau</button>
+                </div>
+            </div>
+        }
+    </section>
+
+    @if (deleteTarget is not null)
+    {
+        <section class="card-x pad account-password mb-4" aria-label="Xóa tài khoản">
+            <h2 class="card-title">Xóa tài khoản</h2>
+            <p>Xóa vĩnh viễn tài khoản <strong>@deleteTarget.Email</strong>. Người này sẽ mất quyền truy cập và có thể đăng ký lại bằng email đó.</p>
+            <EditForm Model="deleteForm" OnValidSubmit="DeleteAccount" FormName="account-delete-form">
+                <DataAnnotationsValidator />
+                <div class="account-password-fields">
+                    <label for="delete-confirm-email">Nhập email tài khoản để xác nhận</label>
+                    <InputText id="delete-confirm-email" class="form-control" autocomplete="off" @bind-Value="deleteForm.ConfirmEmail" />
+                    <label for="delete-admin-password">Mật khẩu admin hiện tại</label>
+                    <InputText id="delete-admin-password" type="password" class="form-control" autocomplete="current-password" @bind-Value="deleteForm.AdminPassword" />
+                </div>
+                <ValidationSummary class="mt-3" />
+                <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-danger" disabled="@busy">Xóa vĩnh viễn</button>
+                    <button type="button" class="btn btn-ghost" disabled="@busy" @onclick="CancelDelete">Hủy</button>
+                </div>
+            </EditForm>
+        </section>
+    }
+
+    @if (passwordTarget is not null)
+    {
+        <section class="card-x pad account-password" aria-label="Đổi mật khẩu">
+            <h2 class="card-title">@(passwordTarget.Id == currentAdminId ? "Đổi mật khẩu admin" : "Cấp lại mật khẩu")</h2>
+            <p>Tài khoản: <strong>@passwordTarget.Email</strong></p>
+            <p class="muted">Nhập mật khẩu admin hiện tại để xác nhận thao tác. Mật khẩu mới cần ít nhất 12 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</p>
+            <EditForm Model="passwordForm" OnValidSubmit="SavePassword" FormName="account-password-form">
+                <DataAnnotationsValidator />
+                <div class="account-password-fields">
+                    <label for="admin-current-password">Mật khẩu admin hiện tại</label>
+                    <InputText id="admin-current-password" type="password" class="form-control" autocomplete="current-password"
+                               @bind-Value="passwordForm.CurrentPassword" />
+                    <label for="account-new-password">Mật khẩu mới</label>
+                    <InputText id="account-new-password" type="password" class="form-control" autocomplete="new-password"
+                               @bind-Value="passwordForm.NewPassword" />
+                    <label for="account-confirm-password">Nhập lại mật khẩu mới</label>
+                    <InputText id="account-confirm-password" type="password" class="form-control" autocomplete="new-password"
+                               @bind-Value="passwordForm.ConfirmPassword" />
+                </div>
+                <ValidationSummary class="mt-3" />
+                <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-primary" disabled="@busy">Lưu mật khẩu</button>
+                    <button type="button" class="btn btn-ghost" disabled="@busy" @onclick="CancelPassword">Hủy</button>
+                </div>
+            </EditForm>
+        </section>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+    private const int PageSize = 20;
+    private List<AccountRow> accounts = [];
+    private AccountRow? passwordTarget;
+    private AccountRow? deleteTarget;
+    private DeleteInput deleteForm = new();
+    private PasswordInput passwordForm = new();
+    private string? currentAdminId;
+    private string searchInput = "";
+    private string searchTerm = "";
+    private string? message;
+    private bool isError;
+    private bool busy;
+    private int page = 1;
+    private int total;
+    private int pendingCount;
+    private int PageCount => Math.Max(1, (total + PageSize - 1) / PageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationStateTask).User;
+        currentAdminId = Users.GetUserId(principal);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        var query = Users.Users.AsNoTracking();
+        if (searchTerm.Length > 0)
+        {
+            var normalizedTerm = searchTerm.ToUpperInvariant();
+            query = query.Where(x => x.NormalizedEmail != null && x.NormalizedEmail.Contains(normalizedTerm));
+        }
+        total = await query.CountAsync();
+        pendingCount = await query.CountAsync(x => x.ApprovedAt == null && x.DisabledAt == null);
+        page = Math.Clamp(page, 1, PageCount);
+        var admins = (await Users.GetUsersInRoleAsync("Admin")).Select(x => x.Id).ToHashSet();
+        var rows = await query
+            .OrderBy(x => x.DisabledAt != null).ThenBy(x => x.ApprovedAt != null).ThenBy(x => x.RegisteredAt)
+            .Skip((page - 1) * PageSize).Take(PageSize).ToListAsync();
+        accounts = rows.Select(x => new AccountRow(x.Id, x.Email ?? "", x.RegisteredAt, x.ApprovedAt, x.DisabledAt,
+            admins.Contains(x.Id))).ToList();
+    }
+
+    private async Task ApplySearch()
+    {
+        searchTerm = searchInput.Trim();
+        searchInput = searchTerm;
+        page = 1;
+        CancelDelete();
+        CancelPassword();
+        await Reload();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchInput = "";
+        searchTerm = "";
+        page = 1;
+        CancelDelete();
+        CancelPassword();
+        await Reload();
+    }
+
+    private async Task ChangePage(int next)
+    {
+        page = Math.Clamp(next, 1, PageCount);
+        await Reload();
+    }
+
+    private async Task Approve(string id)
+    {
+        busy = true;
+        try
+        {
+            var user = await Users.FindByIdAsync(id);
+            if (user is null || user.ApprovedAt is not null || user.DisabledAt is not null || await Users.IsInRoleAsync(user, "Admin"))
+            {
+                Show("Tài khoản không còn chờ duyệt.", true);
+                return;
+            }
+            user.ApprovedAt = DateTimeOffset.UtcNow;
+            var result = await Users.UpdateAsync(user);
+            Show(result.Succeeded ? $"Đã chấp thuận {user.Email}." : "Không thể chấp thuận tài khoản.", !result.Succeeded);
+            await Reload();
+        }
+        finally { busy = false; }
+    }
+
+    private async Task SetDisabled(string id, bool disabled)
+    {
+        busy = true;
+        try
+        {
+            var user = await Users.FindByIdAsync(id);
+            if (user is null || user.Id == currentAdminId || await Users.IsInRoleAsync(user, "Admin"))
+            {
+                Show("Không thể khóa hoặc mở khóa tài khoản admin.", true);
+                return;
+            }
+            if ((user.DisabledAt is not null) == disabled)
+            {
+                Show("Trạng thái tài khoản đã thay đổi. Hãy tải lại danh sách.", true);
+                await Reload();
+                return;
+            }
+            user.DisabledAt = disabled ? DateTimeOffset.UtcNow : null;
+            var result = await Users.UpdateSecurityStampAsync(user);
+            Show(result.Succeeded ? $"Đã {(disabled ? "khóa" : "mở khóa")} {user.Email}." : "Không thể cập nhật trạng thái tài khoản.", !result.Succeeded);
+            await Reload();
+        }
+        finally { busy = false; }
+    }
+
+    private void SelectDeleteTarget(AccountRow account)
+    {
+        if (account.IsAdmin) return;
+        CancelPassword();
+        deleteTarget = account;
+        deleteForm = new();
+        message = null;
+    }
+
+    private void CancelDelete()
+    {
+        deleteTarget = null;
+        deleteForm = new();
+    }
+
+    private async Task DeleteAccount()
+    {
+        if (deleteTarget is null || currentAdminId is null) return;
+        if (!string.Equals(deleteForm.ConfirmEmail.Trim(), deleteTarget.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            Show("Email xác nhận không khớp.", true);
+            return;
+        }
+        busy = true;
+        try
+        {
+            var admin = await Users.FindByIdAsync(currentAdminId);
+            if (admin is null || !await Users.IsInRoleAsync(admin, "Admin"))
+            {
+                Show("Phiên admin không còn hợp lệ. Hãy đăng nhập lại.", true);
+                return;
+            }
+            var verified = await SignIn.CheckPasswordSignInAsync(admin, deleteForm.AdminPassword, lockoutOnFailure: true);
+            if (!verified.Succeeded)
+            {
+                Show(verified.IsLockedOut ? "Tài khoản admin tạm khóa do nhập sai mật khẩu nhiều lần." : "Mật khẩu admin hiện tại không đúng.", true);
+                return;
+            }
+            var user = await Users.FindByIdAsync(deleteTarget.Id);
+            if (user is null || user.Id == currentAdminId || await Users.IsInRoleAsync(user, "Admin"))
+            {
+                Show("Tài khoản không còn tồn tại hoặc là tài khoản admin.", true);
+                await Reload();
+                return;
+            }
+            if (!string.Equals(user.Email, deleteTarget.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                Show("Email tài khoản đã thay đổi. Hãy tải lại danh sách.", true);
+                await Reload();
+                return;
+            }
+            var result = await Users.DeleteAsync(user);
+            Show(result.Succeeded ? $"Đã xóa {user.Email}." : "Không thể xóa tài khoản.", !result.Succeeded);
+            if (result.Succeeded) CancelDelete();
+            await Reload();
+        }
+        finally { busy = false; }
+    }
+
+    private void SelectPasswordTarget(AccountRow account)
+    {
+        CancelDelete();
+        passwordTarget = account;
+        passwordForm = new();
+        message = null;
+    }
+
+    private void CancelPassword()
+    {
+        passwordTarget = null;
+        passwordForm = new();
+    }
+
+    private async Task SavePassword()
+    {
+        if (passwordTarget is null || currentAdminId is null) return;
+        busy = true;
+        try
+        {
+            var admin = await Users.FindByIdAsync(currentAdminId);
+            if (admin is null || !await Users.IsInRoleAsync(admin, "Admin"))
+            {
+                Show("Phiên admin không còn hợp lệ. Hãy đăng nhập lại.", true);
+                return;
+            }
+            var verified = await SignIn.CheckPasswordSignInAsync(admin, passwordForm.CurrentPassword,
+                lockoutOnFailure: true);
+            if (!verified.Succeeded)
+            {
+                Show(verified.IsLockedOut
+                    ? "Tài khoản admin tạm khóa do nhập sai mật khẩu nhiều lần."
+                    : "Mật khẩu admin hiện tại không đúng.", true);
+                return;
+            }
+            IdentityResult result;
+            if (passwordTarget.Id == currentAdminId)
+            {
+                result = await Users.ChangePasswordAsync(admin, passwordForm.CurrentPassword, passwordForm.NewPassword);
+            }
+            else
+            {
+                var target = await Users.FindByIdAsync(passwordTarget.Id);
+                if (target is null)
+                {
+                    Show("Tài khoản không còn tồn tại.", true);
+                    await Reload();
+                    return;
+                }
+                var token = await Users.GeneratePasswordResetTokenAsync(target);
+                result = await Users.ResetPasswordAsync(target, token, passwordForm.NewPassword);
+            }
+            if (!result.Succeeded)
+            {
+                Show(string.Join(" ", result.Errors.Select(PasswordError)), true);
+                return;
+            }
+            var email = passwordTarget.Email;
+            var ownPassword = passwordTarget.Id == currentAdminId;
+            CancelPassword();
+            if (ownPassword)
+            {
+                Navigation.NavigateTo("/account/password-changed", forceLoad: true);
+                return;
+            }
+            Show($"Đã cấp lại mật khẩu cho {email}. Hãy chuyển mật khẩu mới cho người dùng qua kênh riêng.");
+        }
+        finally { busy = false; }
+    }
+
+    private static string PasswordError(IdentityError error) => error.Code switch
+    {
+        "PasswordTooShort" => "Mật khẩu quá ngắn.",
+        "PasswordRequiresUpper" => "Mật khẩu cần chữ hoa.",
+        "PasswordRequiresLower" => "Mật khẩu cần chữ thường.",
+        "PasswordRequiresDigit" => "Mật khẩu cần chữ số.",
+        "PasswordRequiresNonAlphanumeric" => "Mật khẩu cần ký tự đặc biệt.",
+        "PasswordMismatch" => "Mật khẩu admin hiện tại không đúng.",
+        _ => error.Description
+    };
+
+    private void Show(string text, bool error = false)
+    {
+        message = text;
+        isError = error;
+    }
+
+    private sealed record AccountRow(string Id, string Email, DateTimeOffset RegisteredAt,
+        DateTimeOffset? ApprovedAt, DateTimeOffset? DisabledAt, bool IsAdmin);
+
+    private sealed class DeleteInput
+    {
+        [Required(ErrorMessage = "Nhập email tài khoản cần xóa.")]
+        public string ConfirmEmail { get; set; } = "";
+
+        [Required(ErrorMessage = "Nhập mật khẩu admin hiện tại.")]
+        public string AdminPassword { get; set; } = "";
+    }
+
+    private sealed class PasswordInput
+    {
+        [Required(ErrorMessage = "Nhập mật khẩu admin hiện tại.")]
+        public string CurrentPassword { get; set; } = "";
+
+        [Required(ErrorMessage = "Nhập mật khẩu mới.")]
+        [StringLength(128, MinimumLength = 12, ErrorMessage = "Mật khẩu mới cần từ 12 đến 128 ký tự.")]
+        public string NewPassword { get; set; } = "";
+
+        [Required(ErrorMessage = "Nhập lại mật khẩu mới.")]
+        [Compare(nameof(NewPassword), ErrorMessage = "Hai mật khẩu mới không khớp.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

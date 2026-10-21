@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SmartLivestock.Contracts\SmartLivestock.Contracts.csproj" />
+    <ProjectReference Include="..\SmartLivestock.Infrastructure\SmartLivestock.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

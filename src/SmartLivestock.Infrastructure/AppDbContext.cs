@@ -1,10 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using SmartLivestock.Domain;
 using SmartLivestock.Contracts;
 
 namespace SmartLivestock.Infrastructure;
 
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbContext<AppUser>(options)
 {
     public DbSet<Farm> Farms => Set<Farm>();
     public DbSet<Barn> Barns => Set<Barn>();
@@ -15,6 +16,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<AppUser>(e =>
+        {
+            e.Property(x => x.ApprovedAt);
+            e.Property(x => x.DisabledAt);
+            e.HasIndex(x => x.NormalizedEmail).IsUnique().HasDatabaseName("EmailIndex")
+                .HasFilter("[NormalizedEmail] IS NOT NULL");
+        });
         modelBuilder.Entity<Farm>(e =>
         {
             e.HasKey(x => x.Id);

@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 using Serilog;
 using SmartLivestock.Api;
 using SmartLivestock.Contracts;
@@ -30,6 +32,9 @@ builder.Services.AddSingleton<MqttConnectionStatus>();
 builder.Services.AddHostedService<TelemetryMqttService>();
 
 var app = builder.Build();
+var authKey = app.Configuration["Auth:ApiKey"] ?? LocalAuthSettings.TryLoad()?.ApiKey;
+if (string.IsNullOrWhiteSpace(authKey) || authKey.Length < 32)
+    throw new InvalidOperationException("Configure Auth:ApiKey or run scripts/setup-local-auth.ps1");
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -44,6 +49,22 @@ app.UseExceptionHandler(error => error.Run(async context =>
         .ExecuteAsync(context);
 }));
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api") ||
+        context.Request.Path.StartsWithSegments("/hubs/monitoring"))
+    {
+        var supplied = context.Request.Headers["X-SmartLivestock-Api-Key"].ToString();
+        var expected = Encoding.UTF8.GetBytes(authKey);
+        var actual = Encoding.UTF8.GetBytes(supplied);
+        if (actual.Length != expected.Length || !CryptographicOperations.FixedTimeEquals(actual, expected))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+    }
+    await next(context);
+});
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet("/health/ready", async (AppDbContext db, MqttConnectionStatus mqtt, CancellationToken ct) =>

@@ -2,6 +2,21 @@
 
 Mẫu nghiên cứu hệ thống giám sát chăn nuôi dùng .NET 8, SQL Server và MQTT. Có thể chạy trên Windows bằng Visual Studio mà không cần Docker. Tiến độ chức năng được ghi tại [docs/IMPLEMENTATION_PROGRESS.md](docs/IMPLEMENTATION_PROGRESS.md).
 
+## Đăng nhập và quản lý tài khoản
+
+Trước lần chạy đầu tiên của phiên bản có đăng nhập, tạo tài khoản admin và khóa riêng giữa Web và API:
+
+```powershell
+.\scripts\setup-local-auth.ps1 -AdminEmail 'admin@example.com' -AdminPassword (Read-Host 'Mật khẩu admin' -AsSecureString)
+dotnet ef database update --project src/SmartLivestock.Infrastructure --startup-project src/SmartLivestock.Api
+```
+
+Chọn email của bạn và mật khẩu mạnh (12–128 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt). Script kiểm tra quy tắc trước khi lưu vào `deploy/native/auth.env`, tệp đã được Git bỏ qua. Nếu mật khẩu khởi tạo chưa hợp lệ và Web chưa tạo admin, chạy lại cùng lệnh để nhập mật khẩu khác; script giữ nguyên khóa API đã tạo. Web tạo admin khi khởi động lần đầu rồi xóa mật khẩu khởi tạo khỏi tệp; mật khẩu trong SQL Server được Identity băm. Không đặt mật khẩu hoặc khóa API vào `appsettings.json`. Với môi trường khác, cung cấp `Auth:ApiKey` cho cả Web và API và `BootstrapAdmin:Email`/`BootstrapAdmin:Password` cho Web qua biến môi trường hoặc kho bí mật. Hai tiến trình phải dùng cùng khóa API.
+
+Mở Web tại `http://localhost:5297/login`. Người dùng khác chọn **Tạo tài khoản** và đăng ký email, mật khẩu. Họ chỉ đăng nhập được sau khi admin vào **Quản lý tài khoản** để chấp thuận. Trang này liệt kê các tài khoản và trạng thái theo từng trang, hỗ trợ tìm kiếm theo một phần email và xóa bộ lọc; admin có thể khóa/mở khóa tài khoản con, từ chối hoặc xóa tài khoản con, đổi mật khẩu của chính mình hoặc cấp lại mật khẩu cho tài khoản khác. Xóa vĩnh viễn yêu cầu nhập đúng email và mật khẩu admin hiện tại; tài khoản admin không thể bị khóa hoặc xóa tại đây. Tài khoản đã khóa không thể đăng nhập, phiên đang mở bị kiểm tra lại trong tối đa khoảng một phút. Khi đổi/cấp lại mật khẩu, admin phải nhập mật khẩu hiện tại của mình. Đổi mật khẩu admin sẽ đăng xuất phiên hiện tại; phiên có mật khẩu cũ được kiểm tra lại trong tối đa khoảng một phút. Hệ thống không gửi mật khẩu qua email, vì vậy admin cần chuyển mật khẩu được cấp lại cho người dùng qua kênh riêng. Chạy Web bằng HTTPS khi dùng ngoài máy phát triển; không truyền mật khẩu qua HTTP trên mạng LAN.
+
+API và SignalR yêu cầu khóa riêng trong header `X-SmartLivestock-Api-Key`; Web gắn khóa ở phía máy chủ. Khóa này dành cho kết nối Web → API, không chia sẻ cho trình duyệt hoặc thiết bị IoT. Nếu trước đây dùng Swagger/API trực tiếp, cần chuyển sang xác thực phù hợp cho công cụ đó. Việc xác thực email bằng thư xác nhận và thu hồi quyền API theo từng người còn là bước tiếp theo.
+
 ## Yêu cầu trên máy phát triển
 
 - Visual Studio có thành phần **ASP.NET and web development** và .NET SDK 8.0.426 (hoặc bản vá 8.0 tương thích với `global.json`).
@@ -92,7 +107,7 @@ dotnet run --project src/SmartLivestock.Web --launch-profile http
 
 Simulator hỗ trợ biến `SCENARIO`: `NORMAL`, `HIGH_TEMPERATURE`, `HIGH_HUMIDITY`, `HIGH_AMMONIA`, `HIGH_H2S`, `SENSOR_FAILURE`, `DEMO_ALERTS`.
 
-Đây là bản mẫu nghiên cứu; các phần đăng nhập, liên động điều khiển và một số chức năng trong yêu cầu tổng thể vẫn đang được phát triển. Khi triển khai thực tế cần cấu hình SQL Server, TLS, tài khoản riêng cho thiết bị và kiểm định an toàn vận hành.
+Đây là bản mẫu nghiên cứu; quản lý tài khoản nâng cao, liên động điều khiển và một số chức năng trong yêu cầu tổng thể vẫn đang được phát triển. Khi triển khai thực tế cần cấu hình SQL Server, TLS, tài khoản riêng cho thiết bị và kiểm định an toàn vận hành.
 
 ## Xem trên điện thoại
 
@@ -107,7 +122,7 @@ Giao diện Web tự chuyển sang bố cục điện thoại (thanh điều hư
 
 3. Trên điện thoại mở `http://<IP máy tính>:5297` (xem IP bằng `ipconfig`, mục IPv4 Address).
 
-Chỉ dùng cho mạng nội bộ tin cậy: hệ thống chưa có đăng nhập, ai vào được địa chỉ này đều xem và sửa được dữ liệu.
+Chỉ dùng trên mạng nội bộ tin cậy nếu chạy bằng HTTP: đăng nhập đã được bổ sung nhưng mật khẩu và cookie cần HTTPS khi dùng qua mạng LAN.
 
 ## Mô phỏng dữ liệu chạm ngưỡng cảnh báo
 
@@ -128,7 +143,7 @@ Mở **Vật nuôi** ở menu bên trái để thêm từng con với mã riêng
   - Tùy chọn **Cũng hiện khi mở phần mềm** (mặc định tắt).
   Đến giờ, hộp thoại tóm tắt các chuồng lỗi từ lần báo trước đến lúc đó; nếu không có lỗi nào thì không hiện gì. Giờ cố định đã trôi qua lúc tab đóng sẽ hiện một lần ở lần mở kế tiếp. Nút "Xem thử ngay" trong Cài đặt cho xem trước (không tính là đã xem lỗi). Giờ tính theo giờ của máy chủ.
 - **Trang Lịch sử lỗi:** lọc theo khoảng thời gian (1 giờ, 24 giờ, 7 ngày, tất cả), chuồng, mức độ, trạng thái; có phân trang và tự cập nhật. Mỗi dòng hiển thị số con và cơ cấu loài **hiện tại** của chuồng cùng thời điểm đánh dấu đã đọc. Thông tin vật nuôi này không phải ảnh chụp tại lúc phát sinh cảnh báo; dữ liệu cũ không lưu ảnh chụp đó. Nút "Xem lịch sử lỗi" trong hộp thoại mở trang này với đúng khung giờ.
-- **Đã đọc:** mỗi cảnh báo có trạng thái đã đọc / chưa đọc, lưu ở máy chủ (dùng chung, vì chưa có tài khoản). Trang Lịch sử lỗi hiện dấu chấm và chữ đậm cho cảnh báo chưa đọc; mỗi dòng có nút "Đã đọc" / "Bỏ đã đọc"; nút "Đánh dấu tất cả kết quả đã đọc" áp dụng cho mọi cảnh báo khớp bộ lọc hiện tại (kể cả các trang khác); có bộ lọc "Đọc". Huy hiệu trên menu đếm số chưa đọc. Hộp thoại tóm tắt chỉ liệt kê cảnh báo chưa đọc và có nút "Đánh dấu đã đọc". Cảnh báo leo thang (ví dụ cảnh báo lên nguy hiểm) tự quay về chưa đọc.
+- **Đã đọc:** mỗi cảnh báo có trạng thái đã đọc / chưa đọc, hiện vẫn dùng chung giữa các tài khoản; chưa có xác nhận theo từng người. Trang Lịch sử lỗi hiện dấu chấm và chữ đậm cho cảnh báo chưa đọc; mỗi dòng có nút "Đã đọc" / "Bỏ đã đọc"; nút "Đánh dấu tất cả kết quả đã đọc" áp dụng cho mọi cảnh báo khớp bộ lọc hiện tại (kể cả các trang khác); có bộ lọc "Đọc". Huy hiệu trên menu đếm số chưa đọc. Hộp thoại tóm tắt chỉ liệt kê cảnh báo chưa đọc và có nút "Đánh dấu đã đọc". Cảnh báo leo thang (ví dụ cảnh báo lên nguy hiểm) tự quay về chưa đọc.
 - **Phím Esc hoặc nút Đóng** chỉ đóng hộp thoại, không đánh dấu đã đọc và không "xác nhận" cảnh báo (xác nhận có ghi người thực hiện cần đăng nhập, F08).
 - **Cập nhật cơ sở dữ liệu:** chạy `dotnet ef database update` (bước 3 phần "Chạy bằng Visual Studio") để có bảng `Alerts`.
 

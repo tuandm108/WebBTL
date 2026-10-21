@@ -290,6 +290,18 @@ tr.row-danger { --bs-table-bg: color-mix(in srgb, var(--bad-bg) 55%, transparent
 
 /* ---------- settings ---------- */
 .settings-page { max-width: 880px; }
+.accounts-page { max-width: 1120px; }
+.account-list-head, .account-pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; }
+.account-search { display: flex; align-items: center; gap: .6rem; padding: 0 1.25rem 1rem; }
+.account-search .form-control { flex: 1; min-width: 0; }
+.account-search .btn { flex: none; }
+@media (max-width: 540px) { .account-search { flex-wrap: wrap; } .account-search .form-control { flex-basis: 100%; } }
+.account-pagination { border-top: 1px solid var(--border); }
+.account-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+.account-table .cell-name { overflow-wrap: anywhere; }
+.account-password { max-width: 640px; }
+.account-password-fields { display: grid; gap: .45rem; }
+.account-password-fields label:not(:first-child) { margin-top: .6rem; }
 .next-card { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; margin-bottom: 1rem; }
 .next-text { display: flex; flex-direction: column; gap: .1rem; flex: 1; min-width: 0; }
 .next-label { color: var(--muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }

@@ -1,0 +1,85 @@
+TÓM TẮT CÁC NỘI DUNG ĐÃ THỰC HIỆN
+Dự án: Smart Livestock - hệ thống giám sát chăn nuôi thông minh
+Cập nhật: 19/10/2026
+
+1. TỔNG QUAN DỰ ÁN
+1.1. Mục tiêu
+- Xây dựng bản mẫu nghiên cứu để giám sát môi trường chuồng nuôi, quản lý chuồng và vật nuôi, phát hiện và theo dõi cảnh báo.
+- Phạm vi hiện tại: một trang trại mẫu, nhiều chuồng, dữ liệu cảm biến do thiết bị mô phỏng tạo ra. Chưa kết nối thiết bị chăn nuôi thực tế.
+
+1.2. Công nghệ và mô hình triển khai
+- .NET 8; ASP.NET Core API; Blazor Web; Entity Framework Core; SQL Server LocalDB; MQTT với Mosquitto; SignalR.
+- Solution gồm 10 project, tách các phần Web, API, Application, Domain, Infrastructure, Contracts, simulator và các project kiểm thử.
+- Chạy trực tiếp trên Windows/Visual Studio, không cần Docker. Mosquitto dùng cổng cục bộ 1884 có mật khẩu.
+
+2. KIẾN TRÚC VÀ LUỒNG DỮ LIỆU
+2.1. Luồng giám sát
+- Simulator tạo dữ liệu cảm biến -> Mosquitto nhận qua MQTT -> API tiếp nhận và lưu SQL Server -> Web lấy dữ liệu qua API và nhận cập nhật qua SignalR.
+- Dữ liệu cảm biến có thời gian đo, thời gian nhận và chất lượng dữ liệu để hỗ trợ đánh giá độ mới và lỗi cảm biến.
+
+2.2. Cấu trúc dữ liệu
+- Đã tạo các bảng và migration cho trang trại mẫu, chuồng, thiết bị, dữ liệu cảm biến, cảnh báo và vật nuôi.
+- Có dữ liệu mẫu 20 chuồng; mỗi chuồng mẫu có thiết bị mô phỏng. Migration gần nhất bổ sung 40 vật nuôi mẫu có mã riêng trên 20 chuồng, đồng thời giữ dữ liệu vật nuôi người dùng đã nhập.
+
+3. CÁC CHỨC NĂNG ĐÃ TRIỂN KHAI
+3.1. Giám sát môi trường chuồng
+- Thu nhận và lưu dữ liệu nhiệt độ, độ ẩm, NH3 và H2S từ simulator.
+- Có API xem giá trị mới nhất, lịch sử theo chỉ số và danh sách chuồng đang theo dõi có phân trang.
+- Giao diện giám sát tổng quan và chi tiết từng chuồng; hiển thị tình trạng, độ mới và chất lượng số đo. Có bố cục thích ứng cho máy tính và điện thoại.
+- API kiểm tra trạng thái hoạt động và khả năng kết nối SQL Server/MQTT qua các endpoint health.
+
+3.2. Quản lý chuồng
+- Thêm, xem, sửa, xóa chuồng; đặt sức chứa và bật/tắt theo dõi. Màn hình danh sách có phân trang.
+- Kiểm tra mã chuồng trùng; không cho giảm sức chứa xuống dưới số vật nuôi hiện có; không cho xóa chuồng còn thiết bị hoặc vật nuôi.
+
+3.3. Quản lý vật nuôi
+- Thêm, xem, sửa, xóa vật nuôi và chuyển vật nuôi giữa các chuồng. Mỗi con có mã, loài, chuồng hiện tại và tên tùy chọn.
+- Danh mục 12 loài: bò, trâu, heo, gà, vịt, ngan, ngỗng, dê, cừu, thỏ, chim cút, bồ câu.
+- API kiểm tra mã vật nuôi không trùng trong trang trại, loài hợp lệ và sức chứa của chuồng đích.
+- Trang giám sát và lịch sử cảnh báo hiển thị số vật nuôi cùng cơ cấu loài hiện tại của từng chuồng.
+
+3.4. Cảnh báo và lịch sử lỗi
+- So sánh dữ liệu cảm biến với ngưỡng mô phỏng để tạo cảnh báo, tăng mức độ hoặc kết thúc cảnh báo khi số đo hồi phục; dữ liệu cảm biến lỗi được ghi thành loại cảnh báo riêng.
+- Lưu một bản ghi cho mỗi đợt lỗi của từng chuồng và chỉ số; phát thay đổi cảnh báo qua SignalR.
+- Có hộp thoại tóm tắt cảnh báo, huy hiệu số chưa đọc và trang lịch sử với bộ lọc thời gian, chuồng, mức độ, trạng thái, tình trạng đã đọc; hỗ trợ phân trang.
+- Có chức năng đánh dấu đã đọc/chưa đọc từng cảnh báo hoặc toàn bộ kết quả theo bộ lọc. Trạng thái đã đọc hiện dùng chung vì hệ thống chưa có tài khoản.
+- Cài đặt thời điểm hiện hộp thoại: giờ cố định hằng ngày, chu kỳ, ngay lập tức với lỗi nghiêm trọng, hoặc tắt. Thiết lập được lưu theo trình duyệt.
+
+3.5. Mô phỏng phục vụ trình diễn
+- Simulator gửi dữ liệu định kỳ và có các kịch bản bình thường, nhiệt độ/độ ẩm/khí vượt ngưỡng, cảm biến lỗi và DEMO_ALERTS.
+- Kịch bản DEMO_ALERTS tạo diễn biến cảnh báo, leo thang và hồi phục để trình diễn màn hình cảnh báo và lịch sử.
+
+4. KẾT QUẢ KIỂM CHỨNG
+4.1. Kết quả đã ghi nhận trong quá trình phát triển
+- Đã chạy migration trên SQL Server LocalDB; kiểm tra luồng simulator -> MQTT -> cơ sở dữ liệu -> API; kiểm tra giao diện và cảnh báo bằng trình duyệt theo tài liệu tiến độ.
+- Đã kiểm tra API từ chối một số dữ liệu không hợp lệ, như loài ngoài danh mục và mã trùng; kiểm tra hiển thị dữ liệu mẫu và phân trang.
+
+4.2. Phạm vi kiểm thử hiện tại
+- Có kiểm thử đơn vị cho hợp đồng dữ liệu, kiểm tra dữ liệu cảm biến và simulator; có kiểm thử HTTP cơ bản cho API.
+- Một số tình huống tích hợp và lỗi chưa được kiểm chứng đầy đủ: dữ liệu MQTT trùng/lỗi sau sự cố, phiên kết nối lại trên trình duyệt, cập nhật sức chứa đồng thời và độ bền broker sau khởi động lại.
+
+5. GIỚI HẠN CỦA BẢN HIỆN TẠI
+5.1. Giới hạn nghiệp vụ
+- Chỉ số cảm biến và cảnh báo áp dụng ở cấp chuồng; chưa đánh giá sức khỏe riêng từng vật nuôi và loài chưa làm thay đổi ngưỡng cảnh báo.
+- Ngưỡng trong DemoAlertProfile chỉ dùng trình diễn, chưa phải chuẩn an toàn cho vật nuôi hoặc cấu hình theo từng loài/thiết bị.
+
+5.2. Các hạng mục chưa hoàn thành
+- Chưa có đăng nhập, phân quyền, nhật ký thao tác và quản lý đầy đủ trang trại/thiết bị.
+- Chưa có vòng đời lệnh điều khiển và cơ chế liên động an toàn ở Edge; chưa triển khai lịch cho ăn, tổng hợp tiêu thụ nước, báo cáo CSV/PDF và thông báo bên ngoài.
+- Chưa tích hợp phần cứng thực tế. Bản chạy mạng nội bộ hiện chưa phù hợp để mở cho người dùng không tin cậy.
+
+6. HƯỚNG PHÁT TRIỂN TIẾP THEO
+6.1. Hoàn thiện nền tảng hiện có
+- Kiểm thử dữ liệu trùng, mất kết nối MQTT, kết nối lại SignalR và thao tác vật nuôi đồng thời; hoàn thiện quản lý thiết bị và nhật ký thao tác.
+- Bổ sung cấu hình ngưỡng theo hồ sơ chăn nuôi, cảnh báo mất kết nối và cơ chế xác nhận cảnh báo theo người dùng.
+
+6.2. Mở rộng chức năng
+- Triển khai đăng nhập và phân quyền trước các thao tác điều khiển/đánh dấu có trách nhiệm cá nhân.
+- Xây dựng điều khiển thiết bị với ACK, timeout và liên động an toàn; sau đó triển khai lịch cho ăn, thống kê nước và báo cáo xuất dữ liệu.
+- Chỉ kết nối thiết bị thật sau khi kiểm định an toàn vận hành và thử nghiệm thực địa.
+
+7. KẾT LUẬN
+- Dự án đã có bản mẫu chạy được cho giám sát môi trường, quản lý chuồng/vật nuôi và theo dõi cảnh báo từ dữ liệu mô phỏng.
+- Nền tảng kỹ thuật và dữ liệu đã hình thành; các chức năng điều khiển, bảo mật, báo cáo và phần cứng thực tế là giai đoạn tiếp theo.
+
+Nguồn đối chiếu nội bộ: README.md; docs/PROJECT_PLAN.md; docs/IMPLEMENTATION_PROGRESS.md; mã nguồn Web/API và migration hiện tại.

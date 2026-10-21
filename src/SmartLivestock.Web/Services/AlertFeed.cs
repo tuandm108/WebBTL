@@ -7,7 +7,7 @@ namespace SmartLivestock.Web.Services;
 /// One alert-stream connection per browser circuit, shared by the alert dialog, the nav badge and the history page.
 /// Handlers run on a SignalR thread, so subscribers must marshal to their own dispatcher.
 /// </summary>
-public sealed class AlertFeed(IHttpClientFactory httpFactory, IConfiguration config) : IAsyncDisposable
+public sealed class AlertFeed(IHttpClientFactory httpFactory, IConfiguration config, ApiSecret secret) : IAsyncDisposable
 {
     private HubConnection? hub;
 
@@ -27,7 +27,8 @@ public sealed class AlertFeed(IHttpClientFactory httpFactory, IConfiguration con
         if (hub is not null) return;
         var apiBase = config["Api:BaseUrl"] ?? "http://localhost:5215";
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{apiBase.TrimEnd('/')}/hubs/monitoring")
+            .WithUrl($"{apiBase.TrimEnd('/')}/hubs/monitoring", options =>
+                options.Headers.Add("X-SmartLivestock-Api-Key", secret.Value))
             .WithAutomaticReconnect()
             .Build();
         connection.On<AlertChangedDto>("alertChanged", async change =>
