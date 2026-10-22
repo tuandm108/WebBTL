@@ -1,12 +1,21 @@
 @implements IDisposable
 @inject SmartLivestock.Web.Services.AlertFeed Feed
 
-<aside class="sidebar">
+<aside class="sidebar @(_open ? "nav-open" : null)">
     <a class="brand" href="" aria-label="Smart Livestock - trang chủ">
         <span class="brand-mark"><Icon Name="sprout" Size="22" /></span>
         <span class="brand-text">Smart Livestock<small>Giám sát chuồng nuôi</small></span>
     </a>
-    <nav class="nav-list" aria-label="Điều hướng chính">
+    <button type="button" class="nav-toggle" aria-label="@(_open ? "Đóng menu" : "Mở menu")"
+            aria-expanded="@_open" aria-controls="main-nav" @onclick="Toggle">
+        <Icon Name="@(_open ? "x" : "menu")" Size="22" />
+        @if (!_open && Feed.UnreadCount > 0)
+        {
+            <span class="nav-badge" aria-hidden="true">@Feed.UnreadCount</span>
+        }
+    </button>
+    <div class="nav-backdrop" @onclick="Close"></div>
+    <nav id="main-nav" class="nav-list" aria-label="Điều hướng chính" @onclick="Close">
         <NavLink class="nav-item" href="" Match="NavLinkMatch.All"><Icon Name="dashboard" />Giám sát</NavLink>
         <NavLink class="nav-item" href="alerts">
             <Icon Name="history" />Lịch sử lỗi
@@ -27,6 +36,12 @@
 </aside>
 
 @code {
+    private bool _open;
+
+    private void Toggle() => _open = !_open;
+
+    private void Close() => _open = false;
+
     protected override void OnInitialized() => Feed.Changed += OnFeedChanged;
 
     private void OnFeedChanged() => _ = InvokeAsync(StateHasChanged);

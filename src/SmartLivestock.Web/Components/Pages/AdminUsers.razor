@@ -93,13 +93,16 @@
                     </tbody>
                 </table>
             </div>
-            <div class="account-pagination">
-                <span>Trang @(page) / @PageCount</span>
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(page <= 1 || busy)" @onclick="() => ChangePage(page - 1)">Trước</button>
-                    <button type="button" class="btn btn-ghost btn-sm" disabled="@(page >= PageCount || busy)" @onclick="() => ChangePage(page + 1)">Sau</button>
+            @if (PageCount > 1)
+            {
+                <div class="account-pagination">
+                    <span>Trang @(page) / @PageCount</span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-ghost btn-sm" disabled="@(page <= 1 || busy)" @onclick="() => ChangePage(page - 1)">Trước</button>
+                        <button type="button" class="btn btn-ghost btn-sm" disabled="@(page >= PageCount || busy)" @onclick="() => ChangePage(page + 1)">Sau</button>
+                    </div>
                 </div>
-            </div>
+            }
         }
     </section>
 

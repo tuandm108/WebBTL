@@ -3,6 +3,7 @@
 @using SmartLivestock.Contracts
 @inject IHttpClientFactory ClientFactory
 @inject IJSRuntime JS
+@inject Services.PageSizeStore SizeStore
 
 <PageTitle>Quản lý vật nuôi | Smart Livestock</PageTitle>
 
@@ -130,20 +131,20 @@
 <section class="card-x" aria-label="Danh sách vật nuôi">
     <div class="p-3 d-flex align-items-center gap-3 flex-wrap">
         <label for="filter-barn">Lọc theo chuồng</label>
-        <select id="filter-barn" class="form-select" style="max-width:260px" @bind="filterBarnId">
+        <select id="filter-barn" class="form-select" style="max-width:260px" @bind="FilterBarnId">
             <option value="">Tất cả chuồng</option>
             @foreach (var barn in barns)
             {
                 <option value="@barn.Id">@barn.Code — @barn.Name</option>
             }
         </select>
-        <span class="num">@FilteredAnimals.Count() / @animals.Count con</span>
+        <span class="num">@filteredCount / @animals.Count con</span>
     </div>
     @if (loading)
     {
         <div class="p-4" aria-busy="true">Đang tải danh sách...</div>
     }
-    else if (!FilteredAnimals.Any())
+    else if (filteredCount == 0)
     {
         <div class="empty" role="status">
             <Icon Name="animal" Size="40" />
@@ -163,7 +164,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                @foreach (var animal in FilteredAnimals)
+                @foreach (var animal in PagedAnimals)
                 {
                     <tr>
                         <td class="cell-name">@animal.Tag@if (animal.IsDemo) { <span class="cell-sub">Dữ liệu mẫu</span> }</td>
@@ -181,6 +182,11 @@
                 }
                 </tbody>
             </table>
+        </div>
+        <div class="pager pager-grid">
+            <span class="pager-info num">Hiển thị <strong>@first–@last</strong> trong <strong>@filteredCount</strong> con</span>
+            <Pager Page="page" Pages="pages" OnPage="GoTo" />
+            <PageSizeBox Label="Số con/trang" Value="pageSize" Max="MaxPageSize" OnChange="ChangePageSize" ListId="animal-page-size-options" />
         </div>
     }
 </section>
@@ -211,12 +217,40 @@
     private bool isError;
     private bool loading = true;
     private HttpClient Api => ClientFactory.CreateClient("api");
+
+    private string FilterBarnId
+    {
+        get => filterBarnId;
+        set { filterBarnId = value; page = 1; }
+    }
+
+    // The API returns every animal, so paging is done here (same approach as the barns page).
+    private const int MaxPageSize = 50;
+    private const string PageSizeKey = "sl.animals.pageSize";
+    private int page = 1;
+    private int pageSize = 10;
+
     private IEnumerable<AnimalDto> FilteredAnimals => string.IsNullOrEmpty(filterBarnId)
         ? animals : animals.Where(x => x.BarnId.ToString("D") == filterBarnId);
+    private int filteredCount => FilteredAnimals.Count();
+    private IEnumerable<AnimalDto> PagedAnimals => FilteredAnimals.Skip((page - 1) * pageSize).Take(pageSize);
+    private int pages => Math.Max(1, (filteredCount + pageSize - 1) / pageSize);
+    private int first => filteredCount > 0 ? (page - 1) * pageSize + 1 : 0;
+    private int last => Math.Min(page * pageSize, filteredCount);
+
+    private void GoTo(int target) => page = Math.Clamp(target, 1, pages);
+
+    private async Task ChangePageSize(int size)
+    {
+        pageSize = size;
+        page = 1;
+        await SizeStore.SaveAsync(PageSizeKey, size);
+    }
 
     protected override async Task OnInitializedAsync()
     {
         filterBarnId = BarnId?.ToString("D") ?? "";
+        pageSize = await SizeStore.LoadAsync(PageSizeKey, pageSize, MaxPageSize);
         await LoadAsync();
     }
 
@@ -241,6 +275,7 @@
             speciesOptions = await Api.GetFromJsonAsync<List<SpeciesOption>>("api/species") ?? [];
             message = null;
             loading = false;
+            page = Math.Clamp(page, 1, pages);
         }
         catch (Exception ex)
         {
