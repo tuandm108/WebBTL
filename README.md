@@ -31,10 +31,10 @@ Broker của dự án chỉ lắng nghe tại `127.0.0.1:1884`. Dịch vụ Mosq
 
    ```powershell
    Set-Location D:\demoweb
-   .\scripts\setup-local-mqtt.ps1
+   .\scripts\setup-local-mqtt.cmd
    ```
 
-   Lệnh này tạo `deploy/native/.env` và cấu hình broker; các tệp này được Git bỏ qua. Mở `SmartLivestock.sln` trực tiếp trong Visual Studio. Khi chạy bằng F5, API và simulator tự đọc thông tin đăng nhập từ tệp này. Nếu PowerShell chặn chạy script, dùng `powershell -ExecutionPolicy Bypass -File .\scripts\setup-local-mqtt.ps1` cho riêng lần chạy đó.
+   Lệnh này tạo `deploy/native/.env` và cấu hình broker; các tệp này được Git bỏ qua. Tệp `.cmd` gọi PowerShell với `ExecutionPolicy Bypass` chỉ cho tiến trình thiết lập, không thay đổi chính sách PowerShell của máy. Mở `SmartLivestock.sln` trực tiếp trong Visual Studio. Khi chạy bằng F5, API và simulator tự đọc thông tin đăng nhập từ tệp này.
 
 2. Mở **View > Terminal** trong Visual Studio. Tại `D:\demoweb`, khởi động broker và để cửa sổ terminal này tiếp tục chạy:
 
