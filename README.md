@@ -1,4 +1,16 @@
-﻿# Smart Livestock
+Smart Livestock  - HỆ THỐNG GIÁM SÁT VÀ QUẢN LÝ CHĂN NUÔI THÔNG MINH (SMART LIVESTOCK)
+Đồ án môn Kỹ thuật Phần mềm (KTPM 20261) - Đại học Bách khoa Hà Nội.
+
+Giảng viên hướng dẫn: Vũ Song Tùng
+
+Thành viên thực hiện:
+
+Đặng Minh Tuấn – 20250431P
+Nguyễn Thị Thùy Trang – 20250435P
+Phạm Thị Mai – 20250419P
+Ngô Văn Đạt – 2025397P
+
+ # Smart Livestock
 
 Mẫu nghiên cứu hệ thống giám sát chăn nuôi dùng .NET 8, SQL Server và MQTT. Có thể chạy trên Windows bằng Visual Studio mà không cần Docker. Tiến độ chức năng được ghi tại [docs/IMPLEMENTATION_PROGRESS.md](docs/IMPLEMENTATION_PROGRESS.md).
 
