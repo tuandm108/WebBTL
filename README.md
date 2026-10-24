@@ -1,5 +1,5 @@
-Smart Livestock  - HỆ THỐNG GIÁM SÁT VÀ QUẢN LÝ CHĂN NUÔI THÔNG MINH (SMART LIVESTOCK)
-Đồ án môn Kỹ thuật Phần mềm (KTPM 20261) - Đại học Bách khoa Hà Nội.
+ # Smart Livestock  - HỆ THỐNG GIÁM SÁT VÀ QUẢN LÝ CHĂN NUÔI THÔNG MINH (SMART LIVESTOCK)
+# Đồ án môn Kỹ thuật Phần mềm (KTPM 20261) - Đại học Bách khoa Hà Nội.
 
 Giảng viên hướng dẫn: Vũ Song Tùng
 
