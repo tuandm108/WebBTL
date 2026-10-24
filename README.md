@@ -2,12 +2,107 @@
 
 Mẫu nghiên cứu hệ thống giám sát chăn nuôi dùng .NET 8, SQL Server và MQTT. Có thể chạy trên Windows bằng Visual Studio mà không cần Docker. Tiến độ chức năng được ghi tại [docs/IMPLEMENTATION_PROGRESS.md](docs/IMPLEMENTATION_PROGRESS.md).
 
+## Chạy lần đầu trên Windows
+
+Thực hiện theo thứ tự dưới đây. Các lệnh chạy tại thư mục chứa `SmartLivestock.sln`; dừng debug bằng **Shift+F5** trước khi cập nhật database.
+
+### 1. Chuẩn bị môi trường và mã nguồn
+
+Cài .NET SDK 8 (theo `global.json`), Visual Studio với workload **ASP.NET and web development**, SQL Server LocalDB và [Eclipse Mosquitto cho Windows x64](https://mosquitto.org/download/). Cài Mosquitto vào `C:\Program Files\mosquitto` và kiểm tra thư mục có `mosquitto.exe`, `mosquitto_passwd.exe`.
+
+```powershell
+git clone https://github.com/tuandm108/Webdoan.git
+Set-Location Webdoan
+dotnet --version
+dotnet restore SmartLivestock.sln
+dotnet tool restore
+```
+
+Nếu đã có mã nguồn, chỉ cần mở terminal tại thư mục dự án. Nếu Visual Studio báo thiếu .NET, cài SDK tương ứng rồi mở lại Visual Studio.
+
+### 2. Tạo cấu hình MQTT và tài khoản quản trị
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\setup-local-mqtt.ps1
+
+$adminEmail = Read-Host 'Email quản trị'
+$adminPassword = Read-Host 'Mật khẩu quản trị' -AsSecureString
+.\scripts\setup-local-auth.ps1 -AdminEmail $adminEmail -AdminPassword $adminPassword
+```
+
+Mật khẩu phải dài 12–128 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt. Chính sách chạy script chỉ thay đổi trong terminal hiện tại. Nếu cài Mosquitto ở nơi khác, dùng `.\scripts\setup-local-mqtt.ps1 -MosquittoDirectory 'D:\mosquitto'`.
+
+Các script tạo `deploy/native/.env`, `deploy/native/mosquitto.conf` và `deploy/native/auth.env`. Giữ kín các tệp cấu hình local, không commit chúng lên Git. API và Simulator tự đọc thông tin MQTT local; Web và API dùng chung API key trong `auth.env`.
+
+### 3. Tạo database bằng migration có sẵn
+
+```powershell
+sqllocaldb info
+sqllocaldb start MSSQLLocalDB
+$env:ASPNETCORE_ENVIRONMENT = 'Development'
+
+dotnet ef database update --project src/SmartLivestock.Infrastructure --startup-project src/SmartLivestock.Api --context AppDbContext --connection 'Server=(localdb)\MSSQLLocalDB;Database=SmartLivestock;Trusted_Connection=True;TrustServerCertificate=True'
+```
+
+Dự án đã có migration trong `src/SmartLivestock.Infrastructure/Migrations`; không cần tạo migration mới để chạy lần đầu. Lệnh trên tạo database `SmartLivestock`, các bảng Identity, cảm biến, cảnh báo, chuồng và dữ liệu mẫu. Khi cập nhật code có migration mới, chạy lại lệnh cập nhật database.
+
+Nếu máy có `sqlcmd`, kiểm tra các migration đã áp dụng:
+
+```powershell
+sqlcmd -S '(localdb)\MSSQLLocalDB' -E -d SmartLivestock -Q 'SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;'
+```
+
+Nếu dùng SQL Server khác, sửa chuỗi kết nối ở **cả API và Web** trong `appsettings.Development.json`, đồng thời thay giá trị `--connection` trong lệnh migration cho khớp.
+
+### 4. Khởi động broker MQTT
+
+Mở một terminal riêng tại thư mục dự án và giữ lệnh sau chạy:
+
+```powershell
+& 'C:\Program Files\mosquitto\mosquitto.exe' -c '.\deploy\native\mosquitto.conf' -v
+```
+
+Broker của dự án dùng **127.0.0.1:1884**. Dịch vụ Mosquitto mặc định ở cổng **1883** không thay thế broker này. Trong terminal khác có thể kiểm tra bằng `Test-NetConnection 127.0.0.1 -Port 1884`.
+
+### 5. Chạy API, Simulator và Web
+
+Mở `SmartLivestock.sln` trong Visual Studio, vào **Configure Startup Projects... > Multiple startup projects**, đặt `Start` cho `SmartLivestock.Api`, `SmartLivestock.IoTSimulator` và `SmartLivestock.Web`; các project khác để `None`. Chọn profile `http` cho API và Web rồi nhấn **F5**. Hướng dẫn dòng lệnh nằm ở mục **Chạy bằng dòng lệnh** bên dưới.
+
+Mở `http://localhost:5297/login`, đăng nhập bằng tài khoản quản trị đã tạo ở bước 2. Web tạo tài khoản trong database khi khởi động lần đầu.
+
+### 6. Kiểm tra dữ liệu mô phỏng
+
+- API: `http://localhost:5215/health/ready` cần trả trạng thái `ready` khi SQL và MQTT đều kết nối được.
+- Log API có `MQTT telemetry subscription active`.
+- Log Simulator có `published 20 barns`, gửi một lượt mỗi 5 giây.
+- Chờ khoảng 10 giây rồi tải lại trang Giám sát: có nhiệt độ, độ ẩm, NH₃, H₂S và thời gian cập nhật.
+
+Migration chỉ tạo dữ liệu chuồng và vật nuôi mẫu. Số đo cảm biến được tạo khi **Simulator → MQTT cổng 1884 → API → SQL Server** hoạt động. Nhãn **Trực tiếp** trên trang không đủ để xác nhận Simulator đang gửi dữ liệu.
+
+## Xử lý lỗi thường gặp
+
+| Hiện tượng | Cách kiểm tra và xử lý |
+| --- | --- |
+| `running scripts is disabled` | Chạy `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` trong terminal đang dùng rồi chạy lại script. |
+| `Mosquitto was not found` | Cài Mosquitto hoặc truyền đúng `-MosquittoDirectory`; thư mục cần có `mosquitto_passwd.exe`. |
+| `Run scripts/setup-local-mqtt.ps1 or set MQTT_USER and MQTT_PASSWORD` | Chạy script MQTT ở bước 2, sau đó khởi động lại Simulator/API. |
+| `Configure Auth:ApiKey or run scripts/setup-local-auth.ps1` | Chạy script tạo tài khoản ở bước 2; kiểm tra `deploy/native/auth.env` tồn tại. |
+| Lỗi SQL tại `RoleExistsAsync` hoặc gợi ý `EnableRetryOnFailure` | Mở **Inner Exception** để xem lỗi gốc; kiểm tra LocalDB và chạy migration ở bước 3. Thêm retry không tạo database còn thiếu. |
+| Có chuồng nhưng tất cả báo mất tín hiệu, chưa có dữ liệu | Kiểm tra broker đang nghe **1884**, Simulator có log publish và API có log subscription. Nếu API báo `Telemetry processing failed`, đọc lỗi SQL đi kèm. |
+| Simulator kết nối nhầm cổng 1883 | Trong terminal Simulator đặt `$env:MQTT_PORT = '1884'` rồi chạy lại; kiểm tra các biến môi trường MQTT cũ nếu đã cấu hình trước đó. |
+| Build báo DLL đang được sử dụng hoặc cổng bị chiếm | Dừng các phiên API/Web/Simulator cũ trước khi build hoặc chạy lại. |
+
+Những lần chạy sau chỉ cần khởi động LocalDB nếu chưa chạy, chạy broker theo bước 4 và khởi động ba project theo bước 5. Chạy migration khi có migration mới; không cần tạo lại cấu hình MQTT hay tài khoản quản trị.
+
 ## Đăng nhập và quản lý tài khoản
 
 Trước lần chạy đầu tiên của phiên bản có đăng nhập, tạo tài khoản admin và khóa riêng giữa Web và API:
 
 ```powershell
 .\scripts\setup-local-auth.ps1 -AdminEmail 'admin@example.com' -AdminPassword (Read-Host 'Mật khẩu admin' -AsSecureString)
+$env:ASPNETCORE_ENVIRONMENT = 'Development'
+dotnet tool restore
 dotnet ef database update --project src/SmartLivestock.Infrastructure --startup-project src/SmartLivestock.Api
 ```
 
