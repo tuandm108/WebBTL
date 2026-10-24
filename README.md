@@ -11,7 +11,7 @@ Thực hiện theo thứ tự dưới đây. Các lệnh chạy tại thư mục
 Cài .NET SDK 8 (theo `global.json`), Visual Studio với workload **ASP.NET and web development**, SQL Server LocalDB và [Eclipse Mosquitto cho Windows x64](https://mosquitto.org/download/). Cài Mosquitto vào `C:\Program Files\mosquitto` và kiểm tra thư mục có `mosquitto.exe`, `mosquitto_passwd.exe`.
 
 ```powershell
-git clone https://github.com/tuandm108/Webdoan.git
+git clone https://github.com/tuandm108/WebBTL.git
 Set-Location Webdoan
 dotnet --version
 dotnet restore SmartLivestock.sln
