@@ -6,8 +6,11 @@ Giảng viên hướng dẫn: Vũ Song Tùng
 Thành viên thực hiện:
 
 Đặng Minh Tuấn – 20250431P
+
 Nguyễn Thị Thùy Trang – 20250435P
+
 Phạm Thị Mai – 20250419P
+
 Ngô Văn Đạt – 2025397P
 
  # Smart Livestock
